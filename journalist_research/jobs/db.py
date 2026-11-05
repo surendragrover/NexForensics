@@ -36,6 +36,21 @@ def _conn():
                            password=env["DB_PASSWORD"], database=env["DB_NAME"], charset="utf8mb4", local_infile=True)
 
 
+
+def _conn_app():
+    """Least-privilege DOA connection (doa_app: SELECT/INSERT on doa_ tables only).
+    Falls back to the main app user if .doa_db.env is missing."""
+    import pymysql
+    f = os.path.join(APP, ".doa_db.env")
+    if not os.path.exists(f):
+        return _conn()
+    env = {}
+    for l in open(f):
+        if "=" in l and not l.lstrip().startswith("#"):
+            k, v = l.strip().split("=", 1); env[k.strip()] = v.strip()
+    return pymysql.connect(host="localhost", user=env["DOA_DB_USER"], password=env["DOA_DB_PASSWORD"],
+                           database="investigator", charset="utf8mb4")
+
 def upsert_uk_sanctions(recs: Dict[str, Dict], d: Dict, summary: Dict) -> str:
     c = _conn(); cur = c.cursor()
     for q in DDL: cur.execute(q)

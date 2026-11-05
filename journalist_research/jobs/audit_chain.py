@@ -40,6 +40,11 @@ def _conn():
     return c()
 
 
+def _conn_app():
+    from .db import _conn_app as c
+    return c()
+
+
 def init(conn=None) -> str:
     c = conn or _conn(); cur = c.cursor()
     cur.execute(DDL)
@@ -54,7 +59,7 @@ def init(conn=None) -> str:
 
 
 def append(event_type: str, ref_id: str, payload_sha256: str, details: Optional[Dict] = None, conn=None) -> Dict:
-    c = conn or _conn(); cur = c.cursor()
+    c = conn or _conn_app(); cur = c.cursor()
     cur.execute("SELECT GET_LOCK('doa_audit_chain', 10)")
     try:
         cur.execute("SELECT entry_hash FROM doa_audit_chain ORDER BY id DESC LIMIT 1")
