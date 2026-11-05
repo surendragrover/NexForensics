@@ -28,6 +28,8 @@ from journalist_research.common.safety import (
 from journalist_research.common.dates import parse_dates
 from journalist_research.evidence.fact_contradiction import (
     extract_assertions, detect_fact_contradictions, Assertion, FactContradiction)
+from journalist_research.evidence.role_contradiction import (
+    extract_role_assertions, detect_role_contradictions)
 
 PIPELINE_VERSION = "doa-pipeline-1.0.0"
 
@@ -243,12 +245,15 @@ class DOAPipeline:
             assertions += extract_assertions(
                 d.text, subject_id=self.profile.subject_id, source_id=d.source_id, document_id=d.document_id,
                 lineage=ind.lineage_key(asdict(d)), source_kind="RECORD" if d.source_kind == "RECORD" else "REPORT")
+            assertions += extract_role_assertions(
+                d.text, subject_id=self.profile.subject_id, source_id=d.source_id, document_id=d.document_id,
+                lineage=ind.lineage_key(asdict(d)), source_kind="RECORD" if d.source_kind == "RECORD" else "REPORT")
         legacy = []
         try:
             legacy = [_ser(c) for c in detect_claim_contradictions(self.claims_list)]
         except Exception as exc:
             legacy = [{"error": f"{type(exc).__name__}: {exc}"}]
-        fact = detect_fact_contradictions(assertions)
+        fact = detect_fact_contradictions(assertions) + detect_role_contradictions(assertions)
         self.assertions, self.fact_contradictions = assertions, fact
         self.r["assertions"] = [_ser(a) for a in assertions]
         self.r["contradictions"] = {"structured": [_ser(c) for c in fact], "legacy_text": legacy}
@@ -327,7 +332,8 @@ class DOAPipeline:
             except Exception as exc:
                 legacy = {"error": f"{type(exc).__name__}: {exc}"}
             label = {"loan.exists": "Loan exists", "loan.start": "Loan start date",
-                     "loan.amount": "Loan amount (INR)", "loan.repaid": "Loan repaid"}.get(attr, attr)
+                     "loan.amount": "Loan amount (INR)", "loan.repaid": "Loan repaid",
+                     "role.held": "Role", "role.ceased": "Left role", "address.city": "Address (city)"}.get(attr, attr)
             statement = f"{phrase(status)} {label.lower()}: {val} ({kind.replace('_', ' ').lower()})."
             if lower_quality_contest:
                 statement += (" Contested by a lower-quality assertion ("

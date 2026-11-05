@@ -14,6 +14,12 @@ DDL = [
   last_updated VARCHAR(32), record_sha256 CHAR(64), snapshot VARCHAR(32),
   data JSON, removed_at DATETIME NULL, updated_at DATETIME NOT NULL,
   KEY k_name (primary_name(100))) CHARACTER SET utf8mb4""",
+"""CREATE TABLE IF NOT EXISTS doa_sanctions_global (
+  rec_key VARCHAR(80) PRIMARY KEY, list VARCHAR(16) NOT NULL, uid VARCHAR(64) NOT NULL,
+  primary_name VARCHAR(512), aliases JSON, dobs JSON, nationalities JSON, entity_type VARCHAR(32),
+  programs JSON, listed_date VARCHAR(64), record_sha256 CHAR(64), snapshot VARCHAR(32),
+  data JSON, removed_at DATETIME NULL, updated_at DATETIME NOT NULL,
+  KEY k_list (list), KEY k_name (primary_name(100))) CHARACTER SET utf8mb4""",
 """CREATE TABLE IF NOT EXISTS doa_source_refresh_log (
   id BIGINT AUTO_INCREMENT PRIMARY KEY, source VARCHAR(64), snapshot VARCHAR(32),
   raw_sha256 CHAR(64), summary JSON, created_at DATETIME NOT NULL) CHARACTER SET utf8mb4""",
@@ -50,5 +56,30 @@ def upsert_uk_sanctions(recs: Dict[str, Dict], d: Dict, summary: Dict) -> str:
                         [(u,) for u in d["removed"]])
     cur.execute("INSERT INTO doa_source_refresh_log (source,snapshot,raw_sha256,summary,created_at) VALUES (%s,%s,%s,%s,UTC_TIMESTAMP())",
                 ("uk_sanctions", summary["snapshot"], summary["raw_sha256"], json.dumps(summary)))
+    c.commit(); c.close()
+    return f"UPSERTED {len(rows)}, marked removed {len(d['removed'])}"
+
+
+def upsert_global_sanctions(lst: str, recs: Dict[str, Dict], d: Dict, summary: Dict) -> str:
+    c = _conn(); cur = c.cursor()
+    for q in DDL: cur.execute(q)
+    sql = """INSERT INTO doa_sanctions_global VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NULL,UTC_TIMESTAMP())
+             ON DUPLICATE KEY UPDATE primary_name=VALUES(primary_name), aliases=VALUES(aliases), dobs=VALUES(dobs),
+             nationalities=VALUES(nationalities), entity_type=VALUES(entity_type), programs=VALUES(programs),
+             listed_date=VALUES(listed_date), record_sha256=VALUES(record_sha256), snapshot=VALUES(snapshot),
+             data=VALUES(data), removed_at=NULL, updated_at=UTC_TIMESTAMP()"""
+    rows = [(k[:80], lst, r["uid"][:64], (r["names"] or r["aliases"] or [""])[0][:512],
+             json.dumps(r["aliases"], ensure_ascii=False), json.dumps(r["dobs"], ensure_ascii=False),
+             json.dumps(r["nationalities"], ensure_ascii=False), (r["type"] or "")[:32],
+             json.dumps(r["programs"], ensure_ascii=False), (r["listed_date"] or "")[:64], r["record_sha256"],
+             summary["snapshot"], json.dumps(r, ensure_ascii=False)) for k, r in recs.items()]
+    for i in range(0, len(rows), 500):
+        cur.executemany(sql, rows[i:i+500])
+    if d["removed"]:
+        cur.executemany("UPDATE doa_sanctions_global SET removed_at=UTC_TIMESTAMP() WHERE rec_key=%s AND removed_at IS NULL",
+                        [(k,) for k in d["removed"]])
+    cur.execute("INSERT INTO doa_source_refresh_log (source,snapshot,raw_sha256,summary,created_at) VALUES (%s,%s,%s,%s,UTC_TIMESTAMP())",
+                ("global_sanctions:" + lst, summary["snapshot"], summary["raw_sha256"],
+                 json.dumps({k: v for k, v in summary.items() if k != "db"})))
     c.commit(); c.close()
     return f"UPSERTED {len(rows)}, marked removed {len(d['removed'])}"

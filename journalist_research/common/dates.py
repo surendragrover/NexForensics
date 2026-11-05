@@ -71,7 +71,7 @@ def parse_dates(text: str, *, locale: str = "IN") -> List[DateValue]:
         (rf"({_MON})\.?\s+(\d{{1,2}})(?:st|nd|rd|th)?,?\s+(\d{{4}})", "MDY"),
         (r"(?<!\d)(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})(?!\d)", "NUM"),
         (rf"({_MON})\.?,?\s+(\d{{4}})", "MY"),
-        (r"(?<![\d,₹.])((?:19|20)\d{2})(?![\d,])", "Y"),
+        (r"(?<![\d,₹.])((?:19|20)\d{2})(?!\d|,\d)", "Y"),   # "in 2018, he" ok; "2,018" not a year
     ]
     for pat, kind in pats:
         for m in re.finditer(pat, text, re.I):

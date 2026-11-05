@@ -14,10 +14,14 @@ import json, os, re, unicodedata
 from typing import List, Optional
 
 from ..runtime.doa_pipeline import InputDocument, SubjectProfile
-from . import sebi_orders, uk_sanctions
+from . import sebi_orders, uk_sanctions, global_sanctions
+from .sec_edgar import SecEdgar
 
 CHECK_SEBI = "SEBI orders"
 CHECK_UK = "UK Sanctions List"
+CHECK_GLOBAL = {"OFAC_SDN": "OFAC SDN (US)", "UN_SC": "UN Security Council list",
+                "EU_FSF": "EU consolidated sanctions", "WB_DEBAR": "World Bank debarment"}
+CHECK_SEC = "SEC EDGAR filings (US)"
 
 
 def _norm(s: str) -> str:
@@ -104,5 +108,72 @@ def uk_documents(profile: SubjectProfile, records_path: Optional[str] = None) ->
     return docs
 
 
-def collect(profile: SubjectProfile, **kw) -> List[InputDocument]:
-    return sebi_documents(profile, kw.get("sebi_store")) + uk_documents(profile, kw.get("uk_records"))
+def global_documents(profile: SubjectProfile, records: Optional[dict] = None) -> List[InputDocument]:
+    """records: {LIST: {rec_key: rec}} for tests; default = latest snapshot of each list."""
+    wanted = {_norm(n) for n in _names(profile) + list(profile.organizations or [])}
+    docs: List[InputDocument] = []
+    for lst, label in CHECK_GLOBAL.items():
+        recs = (records or {}).get(lst) if records is not None else global_sanctions.latest_records(lst)
+        page = global_sanctions.LISTS[lst]["page"]
+        if not recs:
+            docs.append(InputDocument(document_id=f"{lst}-na-{profile.subject_id}", source_id=lst.lower(),
+                                      url=page, title=label, text="", tier="PRIMARY_OFFICIAL", source_kind="RECORD",
+                                      status="UNAVAILABLE", checklist_item=label))
+            continue
+        hits = 0
+        for key, r in recs.items():
+            alln = r["names"] + r["aliases"]
+            # OFAC/EU often write "LAST, First": also try "First LAST"
+            variants = [(n, v) for n in alln for v in {n, " ".join(reversed([p.strip() for p in n.split(",", 1)]))}]
+            hit = next((n for n, v in variants if _norm(v) in wanted), None)
+            if not hit:
+                continue
+            hits += 1
+            dob = next((d for d in r["dobs"] if re.fullmatch(r"\d{4}-\d{2}-\d{2}", d)), None)
+            text = (f"{label} entry {r['uid']}: {'; '.join(alln)}. Type: {r['type']}. "
+                    f"Programmes: {', '.join(r['programs']) or 'not listed'}. Listed: {r['listed_date'] or 'not listed'}. "
+                    f"DOB: {', '.join(r['dobs']) or 'not listed'}. Nationality: {', '.join(r['nationalities']) or 'not listed'}.")
+            docs.append(InputDocument(
+                document_id=f"{key}", source_id=key.lower(), url=page, title=f"{label} {r['uid']}", text=text,
+                tier="PRIMARY_OFFICIAL", publisher=global_sanctions.LISTS[lst]["publisher"], source_kind="RECORD",
+                lineage_id=key.lower(), checklist_item=label,
+                mention={"name": hit, "dob": dob, "dob_raw": r["dobs"], "nationalities": r["nationalities"],
+                         "record_sha256": r["record_sha256"], "match_kind": "NAME_ONLY_LEAD"}))
+        if not hits:
+            docs.append(InputDocument(document_id=f"{lst}-none-{profile.subject_id}", source_id=lst.lower(), url=page,
+                                      title=label, text="", tier="PRIMARY_OFFICIAL", source_kind="RECORD",
+                                      status="NO_RESULT", checklist_item=label, mention={"records_searched": len(recs)}))
+    return docs
+
+
+def sec_documents(profile: SubjectProfile, client: Optional[SecEdgar] = None, max_hits: int = 10) -> List[InputDocument]:
+    client = client or SecEdgar()
+    docs: List[InputDocument] = []
+    statuses = []
+    for n in _names(profile)[:3] + list(profile.organizations or [])[:2]:
+        res = client.full_text(n, max_hits=max_hits)
+        statuses.append(res.get("status"))
+        for h in res.get("hits", []):
+            docs.append(InputDocument(
+                document_id=f"sec-{h['adsh']}-{abs(hash(h['url'])) % 10**8}", source_id=f"sec-{h['adsh']}",
+                url=h["url"], title=f"SEC {h['form']} {h['file_date']} {h['filer']}",
+                text=f"SEC EDGAR filing {h['form']} filed {h['file_date']} by {h['filer']} mentions \"{n}\" "
+                     f"(full-text search hit; document not read).",
+                tier="MEDIUM", publisher="US SEC EDGAR", source_kind="RECORD", lineage_id=f"sec:{h['adsh']}",
+                published_at=h["file_date"], checklist_item=CHECK_SEC,
+                mention={"name": n, "match_kind": "NAME_ONLY_LEAD", "filer": h["filer"],
+                         "total_hits": res.get("total"), "query_sha256": res.get("sha256")}))
+    if not docs:
+        st = "UNAVAILABLE" if statuses and all(s == "NOT_AVAILABLE" for s in statuses) else "NO_RESULT"
+        docs.append(InputDocument(document_id=f"sec-none-{profile.subject_id}", source_id="sec-edgar",
+                                  url="https://efts.sec.gov/LATEST/search-index", title="SEC EDGAR full-text search",
+                                  text="", tier="MEDIUM", source_kind="RECORD", status=st, checklist_item=CHECK_SEC))
+    return docs
+
+
+def collect(profile: SubjectProfile, *, live: bool = False, **kw) -> List[InputDocument]:
+    docs = (sebi_documents(profile, kw.get("sebi_store")) + uk_documents(profile, kw.get("uk_records"))
+            + global_documents(profile, kw.get("global_records")))
+    if live:
+        docs += sec_documents(profile, kw.get("sec_client"))
+    return docs

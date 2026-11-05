@@ -10,7 +10,8 @@ import argparse, json, os, sys, traceback
 from datetime import datetime, timezone
 
 from ..sources.http_polite import PoliteFetcher, SourceBlocked
-from ..sources import sebi_orders, uk_sanctions, icij_offshore
+from ..sources import sebi_orders, uk_sanctions, icij_offshore, global_sanctions
+import shutil
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPORTS = os.path.join(HERE, "runtime", "artifacts", "sources", "refresh_reports")
@@ -30,14 +31,19 @@ def main(argv=None):
     ap.add_argument("--write-db", action="store_true")
     ap.add_argument("--sebi-limit", type=int, default=25)
     ap.add_argument("--icij-download", action="store_true")
-    ap.add_argument("--only", choices=["sebi", "uk", "icij"])
+    ap.add_argument("--only", choices=["sebi", "uk", "icij", "global"])
     a = ap.parse_args(argv)
     f = PoliteFetcher()
     rep = {"started_utc": datetime.now(timezone.utc).isoformat()}
-    if a.only in (None, "sebi"):
+    du = shutil.disk_usage("/"); rep["disk_used"] = round(du.used / du.total, 3)
+    if rep["disk_used"] >= 0.80:
+        rep["sebi"] = {"status": "SKIPPED_DISK", "warning": f"/ is {rep['disk_used']:.0%} full"}
+    elif a.only in (None, "sebi"):
         rep["sebi"] = _safe("sebi", lambda: sebi_orders.SebiOrders(f).sync(limit=a.sebi_limit))
     if a.only in (None, "uk"):
         rep["uk_sanctions"] = _safe("uk", lambda: uk_sanctions.sync(f, write_db=a.write_db))
+    if a.only in (None, "global"):
+        rep["global_sanctions"] = _safe("global", lambda: global_sanctions.sync_all(f, write_db=a.write_db))
     if a.only in (None, "icij"):
         rep["icij"] = _safe("icij", lambda: icij_offshore.sync(f, download=a.icij_download))
     rep["finished_utc"] = datetime.now(timezone.utc).isoformat()
