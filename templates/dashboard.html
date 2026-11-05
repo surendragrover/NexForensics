@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - InvestigatorAI{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <!-- Welcome Bar -->
+    <div class="welcome-bar">
+        <div class="user-info">
+            <span class="welcome-text">Welcome, <strong>{{ user.full_name }}</strong></span>
+            <span class="user-role">Role: {{ user.role }}</span>
+        </div>
+        <a href="/app/api/auth/logout" class="btn-logout">Logout</a>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-icon">📁</div>
+            <div class="stat-value">{{ total_cases }}</div>
+            <div class="stat-label">Total Cases</div>
+        </div>
+        <div class="stat-card high-risk">
+            <div class="stat-icon">🔴</div>
+            <div class="stat-value">{{ high_risk_cases }}</div>
+            <div class="stat-label">High Risk</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">📊</div>
+            <div class="stat-value">{{ avg_score }}%</div>
+            <div class="stat-label">Avg Score</div>
+        </div>
+    </div>
+
+    <!-- Start Investigation CTA -->
+    <div class="cta-section">
+        <div class="cta-content">
+            <h2>🚀 Start Your Investigation</h2>
+            <p>Launch AI-powered forensic analysis with NER, Voice Stress, Face Recognition, and Risk Scoring.</p>
+            <button onclick="openGradio()" class="btn-cta">Open Investigation Form</button>
+            <script>
+            function openGradio() {
+                window.open('https://nexforensics.com/app/gradio/?token={{ gradio_token }}', 'InvestigatorAI', 'width=1400,height=900,scrollbars=yes,resizable=yes,top=50,left=50');
+            }
+            </script>
+        </div>
+    </div>
+
+    <!-- DOA 2026-11-05: Deep OSINT Agent entry point (opens the same token-gated app on its DOA tab) -->
+    <div class="cta-section">
+        <div class="cta-content">
+            <h2>🔎 Deep OSINT (DOA)</h2>
+            <p>Evidence dossier on a person or company: sanctions (UK, OFAC, UN, EU, World Bank), SEBI orders,
+               ICIJ Offshore Leaks, SEC filings, dark-web monitoring and your own documents. Leads, not verdicts.</p>
+            <button onclick="openDOA()" class="btn-cta">Open Deep OSINT</button>
+            <script>
+            function openDOA() {
+                window.open('https://nexforensics.com/app/gradio/?token={{ gradio_token }}&tab=doa', 'InvestigatorAI', 'width=1400,height=900,scrollbars=yes,resizable=yes,top=50,left=50');
+            }
+            </script>
+            <p style="font-size:12px;opacity:.75;margin-top:6px;">Opens the investigation app; choose the “🔎 Deep OSINT (DOA)” tab.</p>
+        </div>
+    </div>
+
+    <!-- Investigation History -->
+    <div class="section">
+        <h3>📋 Investigation History</h3>
+        <div class="history-list">
+            {% for case in cases %}
+            <div class="history-item {{ 'high-risk' if case.risk > 75 else 'moderate' if case.risk > 50 else 'low-risk' }}">
+                <div class="case-info">
+                    <span class="case-icon">{{ '🔴' if case.risk > 75 else '🟡' if case.risk > 50 else '🟢' }}</span>
+                    <span class="case-id">{{ case.case_id }}</span>
+                    <span class="case-date">{{ case.date }}</span>
+                </div>
+                <div class="case-score">
+                    <span class="score-value">{{ case.risk }}%</span>
+                    <span class="score-label">risk</span>
+                </div>
+            </div>
+            {% else %}
+            <p class="empty-state">No investigations yet. Start your first case!</p>
+            {% endfor %}
+        </div>
+        {% if cases %}
+        <a href="#" class="view-all">View All Cases →</a>
+        {% endif %}
+    </div>
+
+    <!-- Feedback Section -->
+    <div class="section">
+        <h3>💬 Feedback & Results</h3>
+        <div class="feedback-form">
+            <p>How accurate was your last analysis?</p>
+            <div class="star-rating">
+                <span>⭐</span><span>⭐</span><span>⭐</span><span>⭐</span><span>☆</span>
+            </div>
+            <textarea placeholder="Share your feedback on the investigation results..." rows="3"></textarea>
+            <button class="btn-primary">Submit Feedback</button>
+        </div>
+    </div>
+</div>
+{% endblock %}

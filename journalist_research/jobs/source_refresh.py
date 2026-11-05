@@ -46,6 +46,16 @@ def main(argv=None):
         rep["global_sanctions"] = _safe("global", lambda: global_sanctions.sync_all(f, write_db=a.write_db))
     if a.only in (None, "icij"):
         rep["icij"] = _safe("icij", lambda: icij_offshore.sync(f, download=a.icij_download))
+    if a.write_db:
+        try:
+            from .audit_chain import append as _audit
+            snaps = [("uk_sanctions", rep.get("uk_sanctions") or {})]
+            snaps += [(f"global:{k}", v) for k, v in (rep.get("global_sanctions") or {}).items() if isinstance(v, dict)]
+            for name, v in snaps:
+                if v.get("status") == "UPDATED" and v.get("raw_sha256"):
+                    _audit("SOURCE_SNAPSHOT", f"{name}:{v.get('snapshot')}", v["raw_sha256"], {"records": v.get("records")})
+        except Exception as e:  # noqa: BLE001
+            rep["audit_chain"] = f"not written: {type(e).__name__}: {e}"
     rep["finished_utc"] = datetime.now(timezone.utc).isoformat()
     os.makedirs(REPORTS, exist_ok=True)
     p = os.path.join(REPORTS, datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + ".json")
