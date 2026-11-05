@@ -52,7 +52,8 @@ backups/
 archive/
 _archive_cleanup_*/
 _trustcircle_backups/
-reports/
+reports/**/*.pdf
+reports/**/*.json
 uploads/
 journalist_research/runtime/artifacts/
 journalist_research/runtime/config/onion_watchlist.json
