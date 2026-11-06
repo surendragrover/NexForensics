@@ -1267,7 +1267,7 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         + "<div style='margin-top:14px;border-top:0.5px solid #1a2236;padding-top:12px;'>"
         + "<p style='font-size:10px;color:#475569;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;'>Fraud & Crime Indicators</p>"
         + bar("Document Forgery Risk", fraud_indicators["document_forgery"], "#f87171")
-        + (bar("Identity Fraud Risk", fraud_indicators["identity_fraud"], "#fb923c") if (photo is not None or bool(voice_clip) or id_doc is not None) else
+        + (bar("Identity Fraud Risk", fraud_indicators["identity_fraud"], "#fb923c") if (evidence_provided["photo"] or evidence_provided["voice"] or evidence_provided["document"]) else
            "<div style='font-size:11px;color:#64748b;margin:6px 0;'>Identity Fraud Risk: "
            "<span style='color:#e2e8f0;'>N/A (no identity evidence submitted)</span></div>")
         + bar("Financial Anomaly Risk", fraud_indicators["financial_anomaly"], "#a78bfa")
@@ -1443,7 +1443,7 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         "-"*70,
         "  FRAUD & CRIME INDICATORS (Evidence-Based)",
         f"    Document Forgery   : {fraud_indicators['document_forgery']:.1f}%",
-        f"    Identity Fraud     : {(format(fraud_indicators['identity_fraud'], '.1f') + '%') if (photo is not None or bool(voice_clip) or id_doc is not None) else 'N/A (no identity evidence submitted)'}",
+        f"    Identity Fraud     : {(format(fraud_indicators['identity_fraud'], '.1f') + '%') if (evidence_provided["photo"] or evidence_provided["voice"] or evidence_provided["document"]) else 'N/A (no identity evidence submitted)'}",
         f"    Financial Anomaly  : {fraud_indicators['financial_anomaly']:.1f}%",
         f"    Criminal Pattern   : {fraud_indicators['mo_match']:.1f}%",
         "    Behavioral Flags   :",
@@ -2328,6 +2328,9 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
                                               "explanation": c.explanation} for c in _nc]
         if _nc:
             _hi = sum(1 for c in _nc if c.severity in ("HIGH", "CRITICAL"))
+            if str(report_data.get("v_label", "")).upper() == "LOW RISK":
+                report_data["v_label"] = "REVIEW NEEDED: CONTRADICTIONS"
+                report_data["v_color"] = "#f59e0b"
             report_data["v_text"] = (f"{len(_nc)} structured contradiction(s) in the narrative ({_hi} HIGH). "
                                      "Review them before any conclusion; the risk scores do not include them.")
         from journalist_research.evidence.narrative_split import narrative_timeline
