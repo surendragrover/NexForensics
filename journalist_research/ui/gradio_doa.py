@@ -228,6 +228,21 @@ def _face_md(fr) -> str:
     return "\n".join(lines)
 
 
+def _purge_upload(path) -> bool:
+    """Delete one uploaded file from Gradio's cache (and its now-empty folder)."""
+    try:
+        p = getattr(path, "name", path)
+        if not p or not os.path.isfile(p):
+            return True
+        os.remove(p)
+        d = os.path.dirname(p)
+        if os.path.isdir(d) and not os.listdir(d):
+            os.rmdir(d)
+        return True
+    except OSError:
+        return False
+
+
 def run_doa(name, aliases, dob, city, orgs, question, docs_raw, use_local, use_sec, use_dark, files=None,
             subject_photo=None):
     import gradio as gr
@@ -262,6 +277,12 @@ def run_doa(name, aliases, dob, city, orgs, question, docs_raw, use_local, use_s
                 face = _face_compare(subject_photo, files)
             except Exception as e:  # noqa: BLE001
                 face = {"status": "NOT_ASSESSED", "reason": f"Face comparison failed ({type(e).__name__})."}
+            finally:
+                # Retention (approved 2026-11-06): the subject photo is biometric data of a third party.
+                # Delete the server copy right after the comparison; no image or face embedding is kept.
+                _purged = _purge_upload(subject_photo)
+                notes.append("Subject photo deleted from the server after the comparison" if _purged else
+                             "Subject photo could not be deleted from the server cache; check manually")
         pdf = render_doa_pdf(r, {"name": name, "aliases": profile.aliases, "dob": profile.dob, "city": profile.city,
                                  "organizations": profile.organizations, "face": face}, os.path.join(ART, inv, f"{inv}.pdf"))
     except Exception as e:  # noqa: BLE001
