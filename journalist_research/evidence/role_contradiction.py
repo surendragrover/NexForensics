@@ -82,7 +82,7 @@ def extract_role_assertions(text: str, *, subject_id: str, source_id: str, docum
         dates = parse_dates(s)
         first = dates[0] if dates else None
         stmt = bool(_STATEMENT.search(s))
-        kind = "SELF_STATEMENT" if stmt else ("RECORD" if source_kind == "RECORD" else source_kind)
+        kind = "RECORD" if source_kind == "RECORD" else ("SELF_STATEMENT" if stmt else source_kind)
         neg_spans = []
         for m in list(_NEG.finditer(s)) + list(_NOLINK.finditer(s)):
             neg_spans.append(m.span())

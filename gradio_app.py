@@ -346,6 +346,43 @@ def _save_history_entry(entry, report_text, report_data, user_email=None):
         log.error(f"Failed to save investigation history: {e}")
 
 
+def _req_email(request):
+    """Email of the logged-in dashboard user (from the Gradio auth JWT cookie), or None.
+    Per-user isolation: history is never shown without a resolved user."""
+    try:
+        if request is not None and hasattr(request, "cookies"):
+            tok = request.cookies.get(AUTH_COOKIE)
+            if tok:
+                pl = _verify_jwt(tok)
+                if pl:
+                    return pl.get("email")
+    except Exception as e:
+        log.warning(f"user resolve failed: {e}")
+    return None
+
+
+_US_TOKENS = (" us ", " usa ", "united states", " u.s.", "america")
+
+
+def _fbi_display_for(location, raw):
+    raw = str(raw or "NO")
+    if raw.upper() not in ("NO", "", "NONE", "N/A", "NO MATCH RETURNED"):
+        return _display_watchlist_status(raw)          # a real hit is never hidden
+    j = f" {str(location or '').strip().lower()} "
+    if any(x in j for x in _US_TOKENS):
+        return "NOT FOUND in sources searched"
+    return "NOT APPLICABLE (non-US case)" if j.strip() else "US-ONLY LIST (not applicable)"
+
+
+def _honest_negative(v):
+    s = str(v or "")
+    if s.upper().startswith("NO CONFIRMED RECORD"):
+        return "NOT FOUND in sources searched (weak name-fragment matches only)"
+    if s.upper() in ("NO RECORD", "NO", "NONE"):
+        return "NOT FOUND in sources searched"
+    return s
+
+
 def _load_recent_history(limit=20, user_email=None):
     """Returns recent history rows as dicts (case_id, date, risk, deception,
     credibility, suspect_name) — newest first. Used for both the history
@@ -355,6 +392,9 @@ def _load_recent_history(limit=20, user_email=None):
     try:
         conn = _history_db_connect()
         cur = conn.cursor(dictionary=True)
+        if not user_email:
+            cur.close(); conn.close()
+            return []
         if user_email:
             cur.execute("""
                 SELECT id, case_id, suspect_name, created_at, deception_score,
@@ -389,15 +429,15 @@ def _load_recent_history(limit=20, user_email=None):
         return []
 
 
-def _load_history_report(record_id):
+def _load_history_report(record_id, user_email=None):
     """Fetches the full saved report (text + structured report_data) for
     one past investigation, by its history-table id."""
-    if not HISTORY_DB_READY or not record_id:
+    if not HISTORY_DB_READY or not record_id or not user_email:
         return None, None
     try:
         conn = _history_db_connect()
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT report_text, report_data_json FROM ia_gradio_history WHERE id=%s", (record_id,))
+        cur.execute("SELECT report_text, report_data_json FROM ia_gradio_history WHERE id=%s AND user_email=%s", (record_id, user_email))
         row = cur.fetchone()
         cur.close()
         conn.close()
@@ -431,19 +471,19 @@ FIELD_HISTORY_KEYS = {
     "crime_category":         "crime_category",
 }
 
-def _load_field_choices(limit=150):
+def _load_field_choices(limit=150, user_email=None):
     """Scans the last `limit` saved reports and pulls out distinct, non-empty
     values per form field, most-recent-first, so they can be offered as
     click-to-select Dropdown choices."""
     empty = {k: [] for k in FIELD_HISTORY_KEYS}
-    if not HISTORY_DB_READY:
+    if not HISTORY_DB_READY or not user_email:
         return empty
     try:
         conn = _history_db_connect()
         cur = conn.cursor(dictionary=True)
         cur.execute(
-            "SELECT report_data_json FROM ia_gradio_history "
-            "ORDER BY created_at DESC LIMIT %s", (limit,)
+            "SELECT report_data_json FROM ia_gradio_history WHERE user_email=%s "
+            "ORDER BY created_at DESC LIMIT %s", (user_email, limit)
         )
         rows = cur.fetchall()
         cur.close()
@@ -588,7 +628,7 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         return (None,) * 4 + (gr.update(visible=False),
                 gr.update(visible=False),
                 "Fill in at least one field to run analysis.",
-                _history_html(), None)
+                _history_html(_req_email(request)), None)
 
     # ── EVIDENCE COLLECTION & INTEGRITY ─────────────────────────────────────
     photo_hash = "N/A"
@@ -1297,9 +1337,9 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
     indicators_html += (
         "<div style='margin-top:14px;border-top:0.5px solid #1a2236;padding-top:12px;'>"
         "<p style='font-size:10px;color:#475569;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;'>Background & Watchlist</p>"
-        f"<div style='font-size:11px;color:#64748b;'>Criminal History: <span style='color:#e2e8f0;'>{watchlist['criminal_history'][:60]}...</span></div>"
+        f"<div style='font-size:11px;color:#64748b;'>Criminal History: <span style='color:#e2e8f0;'>{_honest_negative(watchlist['criminal_history'])[:70]}</span></div>"
         f"<div style='font-size:11px;color:#64748b;'>Status: <span style='color:#e2e8f0;'>{watchlist['status']}</span></div>"
-        f"<div style='font-size:11px;color:#64748b;'>FBI: <span style='color:#e2e8f0;'>{_display_watchlist_status(watchlist['fbi_watchlist'])[:50]}...</span></div>"
+        f"<div style='font-size:11px;color:#64748b;'>FBI: <span style='color:#e2e8f0;'>{_fbi_display_for(location, watchlist['fbi_watchlist'])[:50]}</span></div>"
         "</div>"
     )
 
@@ -1463,14 +1503,14 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         "    NAME/ALIAS MATCH against a dataset, not a confirmed hit on this specific individual.",
         f"    Match Confidence : {conf}",
         f"    Database Match   : {dm_line}",
-        f"    Criminal History : {watchlist['criminal_history']}",
+        f"    Criminal History : {_honest_negative(watchlist['criminal_history'])}",
         f"    Known Aliases    : {', '.join(watchlist.get('aliases', ['N/A'])[:3])} (names from same dataset search — may be different individuals, not verified as one person)",
         f"    Associates       : {', '.join(watchlist.get('known_associates', ['N/A'])[:3])}",
         f"    Gang Affiliation : {watchlist.get('gang_affiliation', 'N/A')}",
         f"    PEP Status       : {watchlist.get('pep_status', 'N/A')} (name-match, identity unverified)",
         f"    Sanctions List   : {watchlist.get('sanctions', 'N/A')} (name-match, identity unverified)",
         f"    Interpol Status  : {watchlist.get('interpol', 'N/A')} (name-match, identity unverified)",
-        f"    FBI Watchlist    : {_display_watchlist_status(watchlist.get('fbi_watchlist', 'N/A'))}",
+        f"    FBI Watchlist    : {_fbi_display_for(location, watchlist.get('fbi_watchlist', 'N/A'))}",
         f"    Subject Status   : {watchlist.get('status', 'UNKNOWN')}",
     ]
     if weak:
@@ -2270,6 +2310,22 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
     except Exception as e:
         log.warning(f"Could not resolve user for history attribution: {e}")
 
+    # DOA 2026-11-06: structured contradiction check on the narrative, shown on screen too
+    try:
+        from journalist_research.evidence.narrative_split import narrative_contradictions
+        _nc, _ = narrative_contradictions(modus or "", (suspect_name or "subject").strip() or "subject")
+        lines += ["", "STRUCTURED CONTRADICTION CHECK (DOA)"]
+        if _nc:
+            for _c in _nc[:8]:
+                lines.append(f"    [{_c.severity}] {_c.doa_class}: {_c.explanation}")
+            lines.append("    A contradiction is a lead for human review. It establishes no fact, identity or guilt.")
+        else:
+            lines.append("    No structured contradiction found in the case narrative (loans, roles, addresses).")
+        report_data["doa_contradictions"] = [{"class": c.doa_class, "severity": c.severity,
+                                              "explanation": c.explanation} for c in _nc]
+    except Exception as _e:
+        log.warning(f"DOA contradiction check failed: {_e}")
+
     report_text_final = "\n".join(lines)
     _save_history_entry(entry, report_text_final, report_data, user_email=user_email)
 
@@ -2292,7 +2348,7 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         gr.update(visible=True, value=network_html),
         gr.update(visible=True, value=graph_html),
         report_text_final,
-        _history_html(),
+        _history_html(user_email),
         report_data,
         _inv.get('evidence_completeness', {}).get('total', '0%'),
         _inv_render_html(_inv.get('evidence_completeness', {}).get('components', [])),
@@ -2324,7 +2380,8 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
     )
 
 
-def load_history_record(record_id):
+def load_history_record(record_id, request: gr.Request = None):
+    _uem = _req_email(request)
     """Re-opens a past investigation's full report (called when the user
     picks one from the History dropdown and clicks Load)."""
     if not record_id:
@@ -2339,7 +2396,7 @@ def load_history_record(record_id):
                 gr.update(), gr.update(), gr.update(), gr.update(),
                 gr.update(), gr.update(), gr.update())
 
-    report_text, report_data = _load_history_report(record_id)
+    report_text, report_data = _load_history_report(record_id, _uem)
     if not report_data:
         return (gr.update(), gr.update(), gr.update(), gr.update(),
                 gr.update(), gr.update(), gr.update(), gr.update(),
@@ -2363,7 +2420,7 @@ def load_history_record(record_id):
         "ocr": report_data.get("ocr_sc", 0),
         "pattern": report_data.get("pat_sc", 0),
     }
-    graph_html = build_graphs_html(scores_for_graph, list(reversed(_load_recent_history(limit=10))))
+    graph_html = build_graphs_html(scores_for_graph, list(reversed(_load_recent_history(limit=10, user_email=_uem))))
 
     pat_sc = report_data.get("pat_sc", 0)
     pat_src = report_data.get("pat_src", "heuristic")
@@ -2387,7 +2444,7 @@ def load_history_record(record_id):
         gr.update(visible=True, value="<p style='color:#94a3b8;font-size:12px;padding:10px;'>Network data loaded from history.</p>"),
         gr.update(visible=True, value=graph_html),
         report_text or "No report text saved for this record.",
-        _history_html(),
+        _history_html(_uem),
         report_data,
         _inv.get('evidence_completeness', {}).get('total', '0%'),
         _inv_render_html(_inv.get('evidence_completeness', {}).get('components', [])),
@@ -2419,8 +2476,17 @@ def load_history_record(record_id):
     )
 
 
-def _history_html():
-    rows_data = _load_recent_history(limit=20)
+def _hist_dd_for_user(request: gr.Request = None):
+    return gr.update(choices=_history_dropdown_choices(_req_email(request)))
+
+
+def _hist_on_load(request: gr.Request = None):
+    e = _req_email(request)
+    return _history_html(e), gr.update(choices=_history_dropdown_choices(e))
+
+
+def _history_html(user_email=None):
+    rows_data = _load_recent_history(limit=20, user_email=user_email)
     if not rows_data:
         return "<p style='color:#334155;font-size:13px;padding:10px;'>No analyses yet.</p>"
     rows = ""
@@ -2901,10 +2967,10 @@ with gr.Blocks(theme=THEME, title="InvestigatorAI",
             # History
             gr.HTML("<p style='font-size:10px;color:#475569;letter-spacing:.1em;"
                     "text-transform:uppercase;margin:10px 0 4px;'>Analysis History</p>")
-            o_hist = gr.HTML(_history_html())
+            o_hist = gr.HTML(_history_html(None))
             o_hist_dropdown = gr.Dropdown(
                 label="Re-open a past investigation",
-                choices=_history_dropdown_choices(), value=None,
+                choices=[], value=None,
                 interactive=True,
             )
             load_history_btn = gr.Button("📂  Load Selected Report", size="sm")
@@ -3101,8 +3167,11 @@ with gr.Blocks(theme=THEME, title="InvestigatorAI",
     ).then(
         fn=None, js=_VIS_NETWORK_INIT_JS,
     ).then(
-        fn=lambda: gr.update(choices=_history_dropdown_choices()),
+        fn=_hist_dd_for_user,
         inputs=None, outputs=[o_hist_dropdown],
+    ).then(
+        # DOA 2026-11-06: build the PDF right after the analysis, so the Download button is ready (one click)
+        fn=export_report_pdf, inputs=[o_report_data], outputs=[o_pdf_file],
     )
 
     load_history_btn.click(
@@ -3141,16 +3210,16 @@ with gr.Blocks(theme=THEME, title="InvestigatorAI",
     )
 
     demo.load(
-        fn=lambda: (_history_html(), gr.update(choices=_history_dropdown_choices())),
+        fn=_hist_on_load,
         inputs=None, outputs=[o_hist, o_hist_dropdown],
     )
 
-    def _populate_field_history():
+    def _populate_field_history(request: gr.Request = None):
         """Runs once when the page loads — fills in Suspect Name, Location,
         Case Title, Investigating Officer and Crime Category with values
         used in past cases, so the user can click the field and pick an
         existing profile instead of retyping it."""
-        choices = _load_field_choices()
+        choices = _load_field_choices(user_email=_req_email(request))
         base_crime_categories = [
             "Robbery", "Burglary", "Assault", "Homicide", "Fraud",
             "Cybercrime", "Financial Crime", "Narcotics", "Kidnapping",

@@ -128,6 +128,11 @@ def resolve_identity(profile: SubjectProfile, doc: InputDocument) -> Dict[str, A
         if orgs & {o.lower() for o in m["organizations"]}:
             anchors_match.append("organization")
 
+    # Text the investigator pasted for THIS case is attributed to the subject on the investigator's word
+    # (anchor "investigator_supplied"); identity is still not established, and a DOB conflict still wins.
+    if m.get("investigator_supplied") and name_match and not anchors_conflict and not anchors_match:
+        anchors_match.append("investigator_supplied")
+
     if not name_match:
         decision = "NOT_SUBJECT"
     elif "dob" in anchors_conflict:
@@ -244,10 +249,10 @@ class DOAPipeline:
         for d in self.same_docs:
             assertions += extract_assertions(
                 d.text, subject_id=self.profile.subject_id, source_id=d.source_id, document_id=d.document_id,
-                lineage=ind.lineage_key(asdict(d)), source_kind="RECORD" if d.source_kind == "RECORD" else "REPORT")
+                lineage=ind.lineage_key(asdict(d)), source_kind={"RECORD": "RECORD", "SELF": "SELF_STATEMENT"}.get(d.source_kind, "REPORT"))
             assertions += extract_role_assertions(
                 d.text, subject_id=self.profile.subject_id, source_id=d.source_id, document_id=d.document_id,
-                lineage=ind.lineage_key(asdict(d)), source_kind="RECORD" if d.source_kind == "RECORD" else "REPORT")
+                lineage=ind.lineage_key(asdict(d)), source_kind={"RECORD": "RECORD", "SELF": "SELF_STATEMENT"}.get(d.source_kind, "REPORT"))
         legacy = []
         try:
             legacy = [_ser(c) for c in detect_claim_contradictions(self.claims_list)]

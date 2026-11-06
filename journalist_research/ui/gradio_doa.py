@@ -50,6 +50,14 @@ def detect_mention(text: str, p: SubjectProfile) -> dict:
     m = {"name": name or ""}
     if p.dob and any(f.lower() in low for f in _dob_forms(p.dob)):
         m["dob"] = p.dob
+    elif p.dob:
+        # a different stated date of birth is a conflicting anchor (namesake guard), even in pasted text
+        mm = re.search(r"(?:\bborn(?:\s+on)?|\bd\.?o\.?b\.?|date\s+of\s+birth)[:\s]+(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})", low)
+        mi = re.search(r"(?:\bborn(?:\s+on)?|\bd\.?o\.?b\.?|date\s+of\s+birth)[:\s]+(\d{4})-(\d{2})-(\d{2})", low)
+        if mm:
+            m["dob"] = f"{mm.group(3)}-{int(mm.group(2)):02d}-{int(mm.group(1)):02d}"
+        elif mi:
+            m["dob"] = f"{mi.group(1)}-{mi.group(2)}-{mi.group(3)}"
     if p.city and re.search(r"(?<!\w)" + re.escape(p.city.lower()) + r"(?!\w)", low):
         m["city"] = p.city
     orgs = [o for o in p.organizations if o and o.lower() in low]
@@ -81,12 +89,36 @@ def parse_documents(raw: str, profile: SubjectProfile) -> List[InputDocument]:
         kind = kind if kind in ("RECORD", "REPORT", "SELF") else "REPORT"
         h = hashlib.sha256(text.encode()).hexdigest()
         url = meta.get("URL", f"manual://doc-{i}")
+        mention = {**detect_mention(text, profile), "tier_claimed": claimed, "investigator_supplied": True}
+        if "KIND" not in meta:
+            from journalist_research.evidence.narrative_split import split_narrative, mixed
+            cl = split_narrative(text)
+            if mixed(cl):
+                # one pasted narrative mixing what the subject says with what a record shows:
+                # split it so the two sides can be compared (each clause is a separate, non-independent source)
+                groups = {"SELF": [c["text"] for c in cl if c["kind"] == "SELF"],
+                          "REPORT": [c["text"] for c in cl if c["kind"] == "REPORT"]}
+                subs = [("SELF", " ".join(groups["SELF"]), tier)] if groups["SELF"] else []
+                subs += [("RECORD", c["text"], "MEDIUM" if tier in ("PRIMARY_OFFICIAL", "HIGH") else tier)
+                         for c in cl if c["kind"] == "RECORD"]
+                subs += [("REPORT", " ".join(groups["REPORT"]), tier)] if groups["REPORT"] else []
+                for j, (k, t, tr) in enumerate(subs, 1):
+                    hh = hashlib.sha256(t.encode()).hexdigest()
+                    ttl = {"SELF": "Subject's statement (from investigator narrative)",
+                           "RECORD": "Record as summarised by investigator - verify the original",
+                           "REPORT": "Investigator narrative (other)"}[k]
+                    docs.append(InputDocument(document_id=f"manual-{i}.{j}-{hh[:8]}", source_id=f"manual-{hh[:12]}",
+                                              url=f"manual://doc-{i}.{j}", title=ttl, text=t, tier=tr,
+                                              publisher="manual", source_kind=k, lineage_id=f"manual:{hh[:16]}",
+                                              published_at=meta.get("PUBLISHED"), checklist_item=MANUAL_CHECK,
+                                              mention=dict(mention)))
+                continue
         docs.append(InputDocument(document_id=f"manual-{i}-{h[:8]}", source_id=f"manual-{h[:12]}", url=url,
                                   title=meta.get("TITLE", f"Investigator document {i}"), text=text, tier=tier,
                                   publisher=re.sub(r"^https?://([^/]+).*", r"\1", url), source_kind=kind,
                                   lineage_id=f"manual:{url if not url.startswith('manual://') else h[:16]}",
                                   published_at=meta.get("PUBLISHED"), checklist_item=MANUAL_CHECK,
-                                  mention={**detect_mention(text, profile), "tier_claimed": claimed}))
+                                  mention=mention))
     return docs
 
 

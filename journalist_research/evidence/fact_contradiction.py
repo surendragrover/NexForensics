@@ -32,11 +32,13 @@ _NO_LOAN = re.compile(
     r"|कोई\s+(?:भी\s+)?(?:लोन|ऋण|क़र्ज़|कर्ज)\s+नहीं", re.I)
 _LOAN_RECORD = re.compile(
     r"\bloan\s+(?:record|agreement|account|sanction(?:\s+letter)?|statement)\b|\b(?:personal|home|business|car|gold)\s+loan\b"
+    r"|\boutstanding\s+loan\b|\bloan\s+of\s+(?:rs\.?|₹|inr)|\bloan\s+(?:notice|default|demand|recovery|outstanding|dues?)\b"
+    r"|\b(?:bank|recovery|demand|default)\s+notice\b[^.]{0,80}\bloan\b"
     r"|(?:लोन|ऋण)\s+(?:रिकॉर्ड|खाता)", re.I)
 _TOOK_LOAN = re.compile(
     r"\b(?:took|taken|availed|obtained|borrowed)\s+(?:the|a|this|that)?\s*loan\b|(?:लोन|ऋण)\s+लिया", re.I)
 _REPAID = re.compile(r"\b(?:repaid|paid\s+(?:it\s+)?(?:off|back)|closed|settled|foreclosed)\b|चुका\s+दिया", re.I)
-_STATEMENT = re.compile(r"\b(?:told|said|stated|declared|claimed|informed|affidavit)\b|ने\s+कहा|बताया", re.I)
+_STATEMENT = re.compile(r"\b(?:told|said|says|stated|states|declared|claimed|informed|affidavit|denies|denied|maintains|insists)\b|ने\s+कहा|बताया", re.I)
 
 
 @dataclass
@@ -108,7 +110,8 @@ def extract_assertions(text: str, *, subject_id: str, source_id: str, document_i
     for idx, s in enumerate(split_sentences(text)):
         dates = parse_dates(s)
         is_statement = bool(_STATEMENT.search(s))
-        kind = "SELF_STATEMENT" if is_statement else ("RECORD" if source_kind == "RECORD" or _LOAN_RECORD.search(s) else source_kind)
+        kind = "RECORD" if source_kind == "RECORD" else (
+            "SELF_STATEMENT" if is_statement else ("RECORD" if _LOAN_RECORD.search(s) else source_kind))
         first = dates[0] if dates else None
 
         if _NO_LOAN.search(s):
@@ -179,30 +182,44 @@ def detect_fact_contradictions(assertions: List[Assertion], *, amount_tolerance:
         # EXISTENCE: denial at time T while a record shows a loan starting before T
         for d in denials:
             t = _dv_from(d.as_of)
+            # An undated denial (e.g. "she says she took no loan") is read as made now, at the time of the case.
+            # Past-tense / never-type denials then conflict with any earlier recorded loan (HIGH); a present-tense
+            # "no outstanding loan" may be true if the loan was repaid since (MODERATE).
+            past = bool(re.search(r"\b(?:never|took|taken|had|availed|borrowed)\b|लिया", d.text or "", re.I))
             for r in records:
                 start = _dv_from(r.value)
-                if t is None or start is None:
+                if start is None:
                     continue
-                order = start.before(t)
-                if order is not True:
-                    continue   # loan started after the denial, or ordering uncertain -> temporal change, not contradiction
+                if t is not None:
+                    order = start.before(t)
+                    if order is not True:
+                        continue   # loan started after the denial, or ordering uncertain -> temporal change
+                if r.kind != "RECORD":
+                    continue
                 alts = ["The record and the statement may refer to different loans; obtain the loan account number."]
                 severity = "HIGH"
+                if t is None:
+                    alts.insert(0, "The denial carries no date; it is read as made at the time of the case narrative.")
+                    if not past:
+                        severity = "MODERATE"
+                        alts.insert(1, "A present-tense denial may be accurate if the loan was repaid after the record date.")
                 if repaid:
                     alts.insert(0, "A later self-statement claims the loan was repaid; the repayment date is not stated "
                                    "and is unverified. If repaid before the denial date, the denial may be accurate.")
                     severity = "MODERATE" if any(x.metadata.get("repayment_date_stated") for x in repaid) else "HIGH"
                 if d.lineage == r.lineage:
                     alts.append("Both assertions come from the same source lineage.")
-                cid = _cid("EXISTENCE", d.lineage, r.lineage, t.raw, start.raw)
+                cid = _cid("EXISTENCE", d.lineage, r.lineage, t.raw if t else "undated", start.raw)
                 if cid in found:
                     continue
                 # link to the same document's loan.exists=True assertion (same attribute), not its start date
                 side_b = next((x for x in exists_records if x.document_id == r.document_id), r)
                 found[cid] = FactContradiction(
                     cid, "EXISTENCE", severity, subject, "loan.exists", d.assertion_id, side_b.assertion_id,
-                    f"Statement dated {t.raw} denies outstanding loans, but a loan record dated {start.raw} "
-                    f"shows a loan beginning before that date.",
+                    (f"Statement dated {t.raw} denies outstanding loans, but a loan record dated {start.raw} "
+                     f"shows a loan beginning before that date.") if t else
+                    (f"The subject's undated statement denies a loan, but a record dated {start.raw} shows a loan "
+                     f"in the subject's name."),
                     alts, sorted({d.source_id, r.source_id}))
 
         # TEMPORAL: self-stated start vs recorded start, compared at the coarser precision

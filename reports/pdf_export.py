@@ -3273,14 +3273,9 @@ def export_report_pdf(report_data):
                 extract_role_assertions, detect_role_contradictions)
             _narr = str(d.get("modus", "") or "")
             _sid = str(d.get("suspect_name", "subject") or "subject")
-            from journalist_research.evidence.fact_contradiction import split_sentences as _split
-            _as = []
-            for _i, _snt in enumerate(_split(_narr)):
-                # each sentence of the narrative is treated as its own (non-independent) statement
-                _kw = dict(subject_id=_sid, source_id=f"case-narrative#{_i+1}", document_id=f"case-narrative#{_i+1}",
-                           lineage=f"case-narrative#{_i+1}")
-                _as += extract_assertions(_snt, **_kw) + extract_role_assertions(_snt, **_kw)
-            _fc = detect_fact_contradictions(_as) + detect_role_contradictions(_as)
+            from journalist_research.evidence.narrative_split import narrative_contradictions
+            # each clause (subject's statement vs a record's content) is its own non-independent statement
+            _fc, _as = narrative_contradictions(_narr, _sid)
             _doa.append(Spacer(1, 10))
             _doa.append(Paragraph("Structured Contradiction Check (DOA)", h3))
             if _fc:
