@@ -28,7 +28,7 @@ _AMOUNT = re.compile(
 _MULT = {"lakh": 1e5, "lac": 1e5, "लाख": 1e5, "crore": 1e7, "cr": 1e7, "करोड़": 1e7}
 
 _NO_LOAN = re.compile(
-    r"\b(?:no|not\s+(?:have|had)\s+any|without\s+any|never\s+(?:took|taken|had))\s+(?:outstanding\s+|active\s+|existing\s+)?loans?\b"
+    r"\b(?:no|not\s+(?:have|had)\s+any|without\s+any|never\s+(?:took|taken|had))\s+(?:any\s+|a\s+)?(?:outstanding\s+|active\s+|existing\s+)?loans?\b"
     r"|कोई\s+(?:भी\s+)?(?:लोन|ऋण|क़र्ज़|कर्ज)\s+नहीं", re.I)
 _LOAN_RECORD = re.compile(
     r"\bloan\s+(?:record|agreement|account|sanction(?:\s+letter)?|statement)\b|\b(?:personal|home|business|car|gold)\s+loan\b"
@@ -190,14 +190,30 @@ def detect_fact_contradictions(assertions: List[Assertion], *, amount_tolerance:
                 start = _dv_from(r.value)
                 if start is None:
                     continue
+                ambiguous = False
                 if t is not None:
                     order = start.before(t)
-                    if order is not True:
+                    _m = re.match(r"\s*(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})", start.raw or "")
+                    _ddmm = None
+                    if _m:
+                        try:
+                            from datetime import date as _date
+                            _ddmm = _date(int(_m.group(3)), int(_m.group(2)), int(_m.group(1)))
+                        except ValueError:
+                            _ddmm = None
+                    if (order is None and "AMBIGUOUS_DAY_MONTH" in (start.flags or []) and _ddmm is not None
+                            and _ddmm < t.start):
+                        ambiguous = True          # DD/MM (Indian) reading is before the denial; MM/DD may not be
+                    elif order is not True:
                         continue   # loan started after the denial, or ordering uncertain -> temporal change
                 if r.kind != "RECORD":
                     continue
                 alts = ["The record and the statement may refer to different loans; obtain the loan account number."]
                 severity = "HIGH"
+                if ambiguous:
+                    severity = "MODERATE"
+                    alts.insert(0, f"The record date {start.raw} is read as DD/MM (Indian convention). If it is MM/DD, "
+                                   "the loan may post-date the denial; check the original record.")
                 if t is None:
                     alts.insert(0, "The denial carries no date; it is read as made at the time of the case narrative.")
                     if not past:
@@ -207,6 +223,8 @@ def detect_fact_contradictions(assertions: List[Assertion], *, amount_tolerance:
                     alts.insert(0, "A later self-statement claims the loan was repaid; the repayment date is not stated "
                                    "and is unverified. If repaid before the denial date, the denial may be accurate.")
                     severity = "MODERATE" if any(x.metadata.get("repayment_date_stated") for x in repaid) else "HIGH"
+                if ambiguous:
+                    severity = "MODERATE"
                 if d.lineage == r.lineage:
                     alts.append("Both assertions come from the same source lineage.")
                 cid = _cid("EXISTENCE", d.lineage, r.lineage, t.raw if t else "undated", start.raw)

@@ -55,7 +55,7 @@ def render_doa_pdf(result: Dict[str, Any], subject: Dict[str, Any], out_path: st
     subj = [[P("Subject", th), P("Value", th)]] + [[P(k), P(v or "not given")] for k, v in (
         ("Name", subject.get("name")), ("Aliases", ", ".join(subject.get("aliases") or [])),
         ("Date of birth", subject.get("dob")), ("City", subject.get("city")),
-        ("Organisations", ", ".join(subject.get("organizations") or [])), ("Question", result.get("question")))]
+        ("Organisations", ", ".join(subject.get("organizations") or [])), ("Questions", (result.get("question") or "").replace("\n", "   ")))]
     story.append(table(subj, [110, 405]))
     story.append(Spacer(1, 6))
     story.append(Paragraph(
@@ -102,6 +102,22 @@ def render_doa_pdf(result: Dict[str, Any], subject: Dict[str, Any], out_path: st
             rows.append([P(i.get("document_id")), P(i.get("decision")), P(", ".join(i.get("anchors_match") or []) or "-"),
                          P(", ".join(i.get("anchors_conflict") or []) or "-")])
         story.append(table(rows, [150, 165, 100, 100]))
+
+    fr = subject.get("face")
+    if fr:
+        story.append(P("Face comparison", h2))
+        if fr.get("status") == "ASSESSED":
+            story.append(P(f"Model {fr.get('model')}. {fr.get('faces_checked', 0)} face(s) checked in the investigator's "
+                           "uploaded files only (no web search). Similarity is a lead for human review; it does not "
+                           "establish identity. POSSIBLE MATCH from cosine 0.363 (OpenCV's documented SFace threshold); "
+                           "STRONG from 0.50 (provisional).", small))
+            rows = [[P("File", th), P("Where", th), P("Face", th), P("Similarity", th), P("Band", th)]]
+            for m in (fr.get("matches") or [])[:20]:
+                rows.append([P(m["file"]), P(m["where"]), P(m["face"]), P(f"{m['similarity']:.3f}"), P(m["band"])])
+            if len(rows) > 1:
+                story.append(table(rows, [140, 70, 40, 65, 200]))
+        if fr.get("reason"):
+            story.append(P(fr["reason"], small))
 
     for s in (result.get("dossier") or {}).get("sections") or []:
         story.append(KeepTogether([P(f"{s.get('order')}. {s.get('title')}", h2), P(s.get("body"))]))

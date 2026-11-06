@@ -155,7 +155,7 @@ def export_report_pdf(report_data):
 
         d = report_data
         safe_case = (d.get("case_id") or "report").strip().replace(" ", "_").replace("/", "-") or "report"
-        out_path = f"/tmp/investigatorai_{safe_case}_{int(time.time())}.pdf"
+        out_path = f"/tmp/investigatorai_{safe_case}_{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}.pdf"
 
         NAVY   = colors.HexColor("#0b1220")
         RED    = colors.HexColor("#dc2626")
@@ -367,9 +367,9 @@ def export_report_pdf(report_data):
         def _honest_negative(val):
             v = str(val or "")
             if v.upper().startswith("NO CONFIRMED RECORD"):
-                return "NOT FOUND in sources searched (weak name-fragment matches only)"
-            if v.upper() in ("NO RECORD", "NO", "NONE"):
-                return "NOT FOUND in sources searched"
+                return "NOT FOUND in the local watchlist datasets searched (only weak name-fragment matches)"
+            if v.upper().startswith("NO RECORD") or v.upper() in ("NO", "NONE"):
+                return "NOT FOUND in the local watchlist datasets searched"
             return v
 
         # ── AI VERDICT — the first thing a senior officer should see ──────
@@ -391,6 +391,7 @@ def export_report_pdf(report_data):
                         verdict[_k] = "N/A"
                 verdict["organized_crime_basis"] = []
                 verdict["inside_assistance_basis"] = []
+                verdict["immediate_threat"] = "N/A"     # 2026-11-06: no threat level without evidence
             stars_html = (
                 f'<font color="white">{"★" * verdict["stars"]}</font>'
                 f'<font color="#475569">{"★" * (5 - verdict["stars"])}</font>'
@@ -404,10 +405,13 @@ def export_report_pdf(report_data):
 
             def _verdict_metric(label, val):
                 disp = f"{val}%" if isinstance(val, (int, float)) else str(val)
-                return [Paragraph(disp, verdict_num_style), Paragraph(label, verdict_label_style)]
+                st = verdict_num_style if (isinstance(val, (int, float)) or len(disp) <= 4) else ParagraphStyle(
+                    "verdictnum_s", parent=verdict_num_style, fontSize=9.5, leading=12)
+                return [Paragraph(disp, st), Paragraph(label, verdict_label_style)]
 
             verdict_header = Table([[
-                Paragraph(f"AI VERDICT&nbsp;&nbsp;&nbsp;<font size=13>{stars_html}</font>",
+                Paragraph((f"AI VERDICT: NOT ASSESSED (evidence coverage {_ev_cov:.0f}%)" if _verdict_gated else
+                           f"AI VERDICT&nbsp;&nbsp;&nbsp;<font size=13>{stars_html}</font>"),
                           ParagraphStyle("verdicttitle", fontName="Times-Bold", fontSize=13,
                                          textColor=colors.white)),
             ]], colWidths=[480])
@@ -1012,7 +1016,7 @@ def export_report_pdf(report_data):
                             # already applied elsewhere in this report
                             # (analytical_source_coverage) — apply the same
                             # explicit relabel here.
-                            score_card(f"Modules Run ({d.get('active_models', 0)}/5)", min(d.get("active_models", 0) * 20, 100))]],
+                            score_card(f"AI Modules Loaded ({d.get('active_models', 0)}/5)", min(d.get("active_models", 0) * 20, 100))]],
                           colWidths=[120, 120, 120, 120])
         cards_tbl.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, -1), LGRAY),
@@ -2383,7 +2387,9 @@ def export_report_pdf(report_data):
                 story.append(P(
                     f"Evidence Completeness: {_ed_completeness}%  |  "
                     f"Court Readiness: {ed.get('court_readiness', 0)}%  |  "
-                    f"Fused Confidence: {ed.get('fused_confidence', 0)}%", small))
+                    + ("Fused Confidence: withheld (evidence coverage below 25%)"
+                     if float((d.get("intel_summary", {}) or {}).get("completeness_pct", 0) or 0) < 25
+                     else f"Fused Confidence: {ed.get('fused_confidence', 0)}%"), small))
                 if ed.get("critical_missing"):
                     story.append(P("Not Yet Submitted (High Priority): " + ", ".join(ed["critical_missing"]), alert_amber))
 
@@ -3296,6 +3302,30 @@ def export_report_pdf(report_data):
                                "outside these rules.", small))
         except Exception as _e:
             _doa.append(P(f"Structured contradiction check unavailable ({type(_e).__name__}).", small))
+        _tl = d.get("narrative_timeline") or []
+        if _tl:
+            _doa.append(Spacer(1, 8))
+            _doa.append(Paragraph("Narrative Timeline (dated statements)", h3))
+            _rows = [[P("Date", th), P("Type", th), P("Statement", th)]]
+            for _r in _tl[:20]:
+                _amb = " (day/month ambiguous)" if "AMBIGUOUS_DAY_MONTH" in (_r.get("flags") or []) else ""
+                _rows.append([P(f"{_r.get('date')}{_amb}"), P(_r.get("kind")), P(_safe_truncate(_r.get("text", ""), 220))])
+            _t = Table(_rows, colWidths=[110, 60, 310])
+            _t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), DARK), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                                    ("GRID", (0, 0), (-1, -1), 0.4, BORDER), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+            _doa.append(_t)
+        _ck = d.get("source_checklist") or []
+        if _ck:
+            _doa.append(Spacer(1, 8))
+            _doa.append(Paragraph("Source Checklist", h3))
+            _rows = [[P("Source", th), P("Status", th), P("Note", th)]]
+            for _c in _ck:
+                _rows.append([P(_c.get("source")), P(_c.get("status")), P(_c.get("note"))])
+            _t = Table(_rows, colWidths=[190, 90, 200])
+            _t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), DARK), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                                    ("GRID", (0, 0), (-1, -1), 0.4, BORDER), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+            _doa.append(_t)
+            _doa.append(P("NOT ASSESSED means the source was not checked for this report. It is not a negative finding.", small))
         _doa.append(Spacer(1, 6))
         _doa.append(P(f"<b>Integrity:</b> generated {_gen_time}. Content SHA-256 of the report data: "
                        f"{_content_sha}. The PDF file's own SHA-256 is written to a .sha256 file next to the export.",

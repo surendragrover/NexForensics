@@ -68,3 +68,15 @@ def narrative_contradictions(text: str, subject_id: str = "subject"):
                   source_kind=_KIND_TO_SOURCE[c["kind"]])
         assertions += extract_assertions(c["text"], **kw) + extract_role_assertions(c["text"], **kw)
     return detect_fact_contradictions(assertions) + detect_role_contradictions(assertions), assertions
+
+
+def narrative_timeline(text: str) -> List[Dict]:
+    """Dated clauses of the narrative in date order (DD/MM read as Indian convention; ambiguity flagged)."""
+    from journalist_research.common.dates import parse_dates
+    rows = []
+    for c in split_narrative(text):
+        for d in parse_dates(c["text"]):
+            rows.append({"date": d.start.isoformat(), "raw": d.raw, "precision": d.precision,
+                         "flags": list(d.flags or []), "kind": c["kind"], "text": c["text"]})
+    rows.sort(key=lambda r: r["date"])
+    return rows

@@ -377,6 +377,15 @@ class FaceEngine:
             log.warning(f"ArcFace not loaded: {e}")
 
     def _crop(self, img):
+        # 2026-11-06: OpenCV 5 on this server has no CascadeClassifier, so the Haar path below always failed
+        # and the whole image was embedded. Use the YuNet detector first.
+        try:
+            from journalist_research.biometrics.face_detect import detect_faces
+            _f = detect_faces(img)
+            if _f:
+                return _f[0][1]
+        except Exception:
+            pass
         try:
             import cv2
             arr   = np.array(img.convert("RGB"))

@@ -377,9 +377,9 @@ def _fbi_display_for(location, raw):
 def _honest_negative(v):
     s = str(v or "")
     if s.upper().startswith("NO CONFIRMED RECORD"):
-        return "NOT FOUND in sources searched (weak name-fragment matches only)"
-    if s.upper() in ("NO RECORD", "NO", "NONE"):
-        return "NOT FOUND in sources searched"
+        return "NOT FOUND in the local watchlist datasets searched (only weak name-fragment matches)"
+    if s.upper().startswith("NO RECORD") or s.upper() in ("NO", "NONE"):
+        return "NOT FOUND in the local watchlist datasets searched"
     return s
 
 
@@ -1221,7 +1221,8 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         v_text = "Evidence inconsistencies detected. Cross-verify all submitted materials and expand investigation."
     else:
         v_icon, v_color, v_label = "🟢", "#22c55e", "LOW RISK"
-        v_text = "Evidence patterns appear consistent. Continue routine monitoring and evidence collection."
+        v_text = ("No high-risk signal in the submitted evidence. This is not a finding that the account is "
+                  "consistent: check evidence coverage and the structured contradiction check.")
 
     # If watchlist override, also bump deception/risk scores for reporting
     if watchlist_override:
@@ -1261,12 +1262,14 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         + bar("Voice Evidence Risk", vox_sc, "#ef4444")
         + bar("Facial Evidence Risk", face_sc, "#f59e0b")
         + bar("Document Evidence Risk", ocr_sc, "#f472b6")
-        + bar("Criminal Pattern Match", pat_sc, "#a78bfa")
+        + bar("Pattern Risk (heuristic, text)", pat_sc, "#a78bfa")
         + bar("Composite Deception", deception, "#22c55e")
         + "<div style='margin-top:14px;border-top:0.5px solid #1a2236;padding-top:12px;'>"
         + "<p style='font-size:10px;color:#475569;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;'>Fraud & Crime Indicators</p>"
         + bar("Document Forgery Risk", fraud_indicators["document_forgery"], "#f87171")
-        + bar("Identity Fraud Risk", fraud_indicators["identity_fraud"], "#fb923c")
+        + (bar("Identity Fraud Risk", fraud_indicators["identity_fraud"], "#fb923c") if (photo is not None or bool(voice_clip) or id_doc is not None) else
+           "<div style='font-size:11px;color:#64748b;margin:6px 0;'>Identity Fraud Risk: "
+           "<span style='color:#e2e8f0;'>N/A (no identity evidence submitted)</span></div>")
         + bar("Financial Anomaly Risk", fraud_indicators["financial_anomaly"], "#a78bfa")
         + bar("Criminal Pattern Match", fraud_indicators["mo_match"], "#22d3ee")
         + "</div>"
@@ -1440,7 +1443,7 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         "-"*70,
         "  FRAUD & CRIME INDICATORS (Evidence-Based)",
         f"    Document Forgery   : {fraud_indicators['document_forgery']:.1f}%",
-        f"    Identity Fraud     : {fraud_indicators['identity_fraud']:.1f}%",
+        f"    Identity Fraud     : {(format(fraud_indicators['identity_fraud'], '.1f') + '%') if (photo is not None or bool(voice_clip) or id_doc is not None) else 'N/A (no identity evidence submitted)'}",
         f"    Financial Anomaly  : {fraud_indicators['financial_anomaly']:.1f}%",
         f"    Criminal Pattern   : {fraud_indicators['mo_match']:.1f}%",
         "    Behavioral Flags   :",
@@ -2323,6 +2326,35 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
             lines.append("    No structured contradiction found in the case narrative (loans, roles, addresses).")
         report_data["doa_contradictions"] = [{"class": c.doa_class, "severity": c.severity,
                                               "explanation": c.explanation} for c in _nc]
+        if _nc:
+            _hi = sum(1 for c in _nc if c.severity in ("HIGH", "CRITICAL"))
+            report_data["v_text"] = (f"{len(_nc)} structured contradiction(s) in the narrative ({_hi} HIGH). "
+                                     "Review them before any conclusion; the risk scores do not include them.")
+        from journalist_research.evidence.narrative_split import narrative_timeline
+        _tl = narrative_timeline(modus or "")
+        report_data["narrative_timeline"] = _tl
+        lines += ["", "NARRATIVE TIMELINE (dated statements, DD/MM read as Indian convention)"]
+        if _tl:
+            for _r in _tl[:20]:
+                _amb = " [day/month ambiguous]" if "AMBIGUOUS_DAY_MONTH" in _r["flags"] else ""
+                lines.append(f"    {_r['date']} ({_r['raw']}){_amb}  [{_r['kind']}]  {_r['text'][:140]}")
+        else:
+            lines.append("    No dated statement found.")
+        _india = "india" in f" {location or ''} ".lower()
+        _ck = [("Sanctions / PEP (local watchlist datasets)", "SEARCHED", "see Background & Watchlist")]
+        if _india:
+            _ck += [("SEBI orders", "NOT ASSESSED", "run the Deep OSINT (DOA) tab: local SEBI order corpus"),
+                    ("MCA director / company records", "NOT ASSESSED", "captcha-gated: manual check"),
+                    ("eCourts case status", "NOT ASSESSED", "captcha-gated: manual check"),
+                    ("CIBIL / RBI wilful-defaulter lists", "NOT ASSESSED", "no free public API: manual check"),
+                    ("FBI watchlist", "NOT APPLICABLE", "US-only list")]
+        else:
+            _ck += [("Jurisdiction registers (courts, companies, regulators)", "NOT ASSESSED",
+                     "run the Deep OSINT (DOA) tab or check manually")]
+        report_data["source_checklist"] = [{"source": a, "status": b, "note": c} for a, b, c in _ck]
+        lines += ["", "SOURCE CHECKLIST" + (" (India)" if _india else "")]
+        for a, b, c in _ck:
+            lines.append(f"    {a:<45} {b:<15} {c}")
     except Exception as _e:
         log.warning(f"DOA contradiction check failed: {_e}")
 
@@ -2908,7 +2940,7 @@ with gr.Blocks(theme=THEME, title="InvestigatorAI",
                 o_cred = gr.Label(label="Credibility")
             with gr.Row():
                 o_risk = gr.Label(label="Risk Level")
-                o_pat  = gr.Label(label="Criminal Pattern Match")
+                o_pat  = gr.Label(label="Pattern Risk (heuristic, text)")
 
             gr.HTML("<p style='font-size:10px;color:#475569;letter-spacing:.1em;"
                     "text-transform:uppercase;margin:10px 0 4px;'>"

@@ -212,7 +212,24 @@ def gather(profile: SubjectProfile, docs_raw: str, use_local: bool, use_sec: boo
     return docs, notes
 
 
-def run_doa(name, aliases, dob, city, orgs, question, docs_raw, use_local, use_sec, use_dark, files=None):
+def _face_md(fr) -> str:
+    if not fr or fr.get("status") != "ASSESSED":
+        return f"**Face comparison:** not assessed. {fr.get('reason', '') if fr else ''}"
+    lines = [f"**Face comparison ({fr.get('model')}):** {fr['faces_checked']} face(s) checked in the uploaded files. "
+             "Similarity is a lead for human review, not identity. POSSIBLE MATCH from cosine 0.363 (OpenCV's "
+             "documented SFace threshold); STRONG from 0.50 (provisional).", "",
+             "| File | Where | Face | Similarity | Band |", "|---|---|---|---|---|"]
+    for m in fr["matches"][:15]:
+        lines.append(f"| {m['file']} | {m['where']} | {m['face']} | {m['similarity']:.3f} | {m['band']} |")
+    if fr.get("reason"):
+        lines.append(f"\n{fr['reason']}")
+    for n in fr.get("notes", []):
+        lines.append(f"\n_{n}_")
+    return "\n".join(lines)
+
+
+def run_doa(name, aliases, dob, city, orgs, question, docs_raw, use_local, use_sec, use_dark, files=None,
+            subject_photo=None):
     import gradio as gr
     from journalist_research.report.doa_pdf import render_doa_pdf
     name = (name or "").strip()
@@ -225,13 +242,28 @@ def run_doa(name, aliases, dob, city, orgs, question, docs_raw, use_local, use_s
     sid = "SUBJ-" + hashlib.sha256(name.lower().encode()).hexdigest()[:10]
     profile = SubjectProfile(subject_id=sid, name=name, aliases=_split_list(aliases), dob=(dob or "").strip() or None,
                              city=(city or "").strip() or None, organizations=_split_list(orgs))
-    question = (question or "").strip() or f"What can be verified about {name}?"
+    # several questions, one per line (a line may also hold several "?"-ended questions)
+    qs = []
+    for ln in (question or "").splitlines():
+        for q in re.findall(r"[^?]+\?|[^?]+$", ln):
+            q = q.strip(" \t-•*0123456789.)")
+            if len(q) > 2:
+                qs.append(q if q.endswith("?") else q + "?")
+    qs = qs or [f"What can be verified about {name}?"]
+    question = "\n".join(f"{i}. {q}" for i, q in enumerate(qs, 1)) if len(qs) > 1 else qs[0]
     try:
         docs, notes = gather(profile, docs_raw, use_local, use_sec, use_dark, files)
         inv = f"DOA-{stamp}-{sid[-6:]}"
         r = DOAPipeline(inv, question, profile, docs, artifact_root=ART).run()
+        face = None
+        if subject_photo:
+            try:
+                from journalist_research.biometrics.face_match import compare as _face_compare
+                face = _face_compare(subject_photo, files)
+            except Exception as e:  # noqa: BLE001
+                face = {"status": "NOT_ASSESSED", "reason": f"Face comparison failed ({type(e).__name__})."}
         pdf = render_doa_pdf(r, {"name": name, "aliases": profile.aliases, "dob": profile.dob, "city": profile.city,
-                                 "organizations": profile.organizations}, os.path.join(ART, inv, f"{inv}.pdf"))
+                                 "organizations": profile.organizations, "face": face}, os.path.join(ART, inv, f"{inv}.pdf"))
     except Exception as e:  # noqa: BLE001
         return (f"**DOA run failed:** `{type(e).__name__}: {e}`\n\n```\n{traceback.format_exc()[-1500:]}\n```",
                 None, None, None, gr.update(value=None, visible=False))
@@ -262,6 +294,8 @@ def run_doa(name, aliases, dob, city, orgs, question, docs_raw, use_local, use_s
           f"<sub>Run {r['investigation_id']} · result SHA-256 `{r['sha256'][:16]}…` · PDF SHA-256 `{pdf['pdf_sha256'][:16]}…` · {pdf['generated']}</sub>"]
     if notes:
         md.append("\n".join(f"- ⚠ {n}" for n in notes))
+    if subject_photo:
+        md.append(_face_md(face))
     return ("\n\n".join(md), cov or None, fc or None, fnd or None, gr.update(value=pdf["pdf"], visible=True))
 
 
@@ -275,11 +309,15 @@ def build_doa_tab():
     with gr.Row():
         name = gr.Textbox(label="Subject name *", placeholder="e.g. Ravi Kalpnik")
         aliases = gr.Textbox(label="Aliases (comma separated)")
+    photo = gr.Image(label="Subject photo (optional): compared with faces in the uploaded files",
+                     type="filepath", height=220, sources=["upload"])
     with gr.Row():
         dob = gr.Textbox(label="Date of birth (YYYY-MM-DD)", placeholder="optional, strongest identity anchor")
         city = gr.Textbox(label="City")
         orgs = gr.Textbox(label="Organisations (comma separated)")
-    question = gr.Textbox(label="Question", placeholder="e.g. Did he take a loan before denying it?")
+    question = gr.Textbox(label="Questions (one per line)", lines=6, max_lines=20,
+                          placeholder="e.g.\nDid he take a loan before denying it?\nWas he a director of any company?\n"
+                                      "Is his name on any sanctions list?")
     files = gr.File(label="Documents (optional): upload one or more files (PDF, Word, text, HTML, images)",
                     file_count="multiple", file_types=UPLOAD_TYPES, type="filepath")
     docs = gr.State("")
@@ -294,6 +332,6 @@ def build_doa_tab():
     fnd = gr.Dataframe(headers=["Status", "Statement", "Independent sources"], label="Findings", wrap=True)
     dl = (gr.DownloadButton(label="⬇ DOA dossier (PDF)", visible=False, elem_id="doa_pdf_download")
           if hasattr(gr, "DownloadButton") else gr.File(label="DOA dossier (PDF)", visible=False, elem_id="doa_pdf_download"))
-    run.click(run_doa, inputs=[name, aliases, dob, city, orgs, question, docs, use_local, use_sec, use_dark, files],
+    run.click(run_doa, inputs=[name, aliases, dob, city, orgs, question, docs, use_local, use_sec, use_dark, files, photo],
               outputs=[summary, cov, fc, fnd, dl]).then(fn=None, js=AUTO_DOWNLOAD_JS)
     return run
