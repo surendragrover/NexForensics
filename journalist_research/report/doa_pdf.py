@@ -110,8 +110,8 @@ def render_doa_pdf(result: Dict[str, Any], subject: Dict[str, Any], out_path: st
             story.append(P(f"Model {fr.get('model')}. {fr.get('faces_checked', 0)} face(s) checked in the investigator's "
                            "uploaded files only (no web search). Similarity is a lead for human review; it does not "
                            "establish identity. POSSIBLE MATCH from cosine 0.363 (OpenCV's documented SFace threshold); "
-                           "STRONG from 0.50 (provisional). The subject photo is deleted from the server after the "
-                           "comparison; no image or face embedding is stored.", small))
+                           "STRONG from 0.50 (provisional). The subject photo is stored encrypted on the account "
+                           "owner's Google Drive (not on the server) while the account exists; no face embedding is stored.", small))
             rows = [[P("File", th), P("Where", th), P("Face", th), P("Similarity", th), P("Band", th)]]
             for m in (fr.get("matches") or [])[:20]:
                 rows.append([P(m["file"]), P(m["where"]), P(m["face"]), P(f"{m['similarity']:.3f}"), P(m["band"])])

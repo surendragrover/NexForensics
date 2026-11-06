@@ -228,6 +228,13 @@ def _face_md(fr) -> str:
     return "\n".join(lines)
 
 
+try:
+    import gradio as _gr_mod
+    _GrRequest = _gr_mod.Request
+except Exception:  # noqa: BLE001
+    _GrRequest = object
+
+
 def _purge_upload(path) -> bool:
     """Delete one uploaded file from Gradio's cache (and its now-empty folder)."""
     try:
@@ -244,7 +251,7 @@ def _purge_upload(path) -> bool:
 
 
 def run_doa(name, aliases, dob, city, orgs, question, docs_raw, use_local, use_sec, use_dark, files=None,
-            subject_photo=None):
+            subject_photo=None, request: _GrRequest = None):
     import gradio as gr
     from journalist_research.report.doa_pdf import render_doa_pdf
     name = (name or "").strip()
@@ -270,6 +277,12 @@ def run_doa(name, aliases, dob, city, orgs, question, docs_raw, use_local, use_s
         docs, notes = gather(profile, docs_raw, use_local, use_sec, use_dark, files)
         inv = f"DOA-{stamp}-{sid[-6:]}"
         r = DOAPipeline(inv, question, profile, docs, artifact_root=ART).run()
+        from journalist_research.storage import drive_store as _ds
+        _uid = _ds.user_from_request(request)
+        try:
+            _ds.stage(files, _uid, inv, "documents")
+        except Exception as e:  # noqa: BLE001
+            notes.append(f"Uploaded documents not archived to Drive ({type(e).__name__})")
         face = None
         if subject_photo:
             try:
@@ -278,13 +291,26 @@ def run_doa(name, aliases, dob, city, orgs, question, docs_raw, use_local, use_s
             except Exception as e:  # noqa: BLE001
                 face = {"status": "NOT_ASSESSED", "reason": f"Face comparison failed ({type(e).__name__})."}
             finally:
-                # Retention (approved 2026-11-06): the subject photo is biometric data of a third party.
-                # Delete the server copy right after the comparison; no image or face embedding is kept.
+                # Storage rule (approved 2026-11-06): the photo is kept on the owner's Google Drive,
+                # encrypted, per user, while the account exists. No copy stays on the server.
+                try:
+                    _ds.stage([subject_photo], _uid, inv, "subject_photo")
+                except Exception as e:  # noqa: BLE001
+                    notes.append(f"Subject photo not archived to Drive ({type(e).__name__})")
                 _purged = _purge_upload(subject_photo)
-                notes.append("Subject photo deleted from the server after the comparison" if _purged else
-                             "Subject photo could not be deleted from the server cache; check manually")
+                if not _purged:
+                    notes.append("Subject photo could not be removed from the server cache; check manually")
         pdf = render_doa_pdf(r, {"name": name, "aliases": profile.aliases, "dob": profile.dob, "city": profile.city,
                                  "organizations": profile.organizations, "face": face}, os.path.join(ART, inv, f"{inv}.pdf"))
+        try:
+            _ds.stage([pdf["pdf"]], _uid, inv, "dossier")
+            notes.append("Uploaded files and the dossier are stored encrypted on Google Drive for this account "
+                         "(kept while the account exists)")
+        except Exception as e:  # noqa: BLE001
+            notes.append(f"Dossier not archived to Drive ({type(e).__name__})")
+        for _f in (files or []):
+            _purge_upload(_f)
+        _ds.flush_async()
     except Exception as e:  # noqa: BLE001
         return (f"**DOA run failed:** `{type(e).__name__}: {e}`\n\n```\n{traceback.format_exc()[-1500:]}\n```",
                 None, None, None, gr.update(value=None, visible=False))
