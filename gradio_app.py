@@ -3165,13 +3165,15 @@ with gr.Blocks(theme=THEME, title="InvestigatorAI",
          inv_ocr_status, inv_ocr_reason, inv_advanced_html, inv_kg_interactive, inv_network_interactive,
          inv_guidance_html],
     ).then(
-        fn=None, js=_VIS_NETWORK_INIT_JS,
-    ).then(
+        # 2026-11-06: server steps first. The graph-init JS step can fail in the browser, and a failed
+        # client step stops the rest of a .then() chain, so it now runs last.
         fn=_hist_dd_for_user,
         inputs=None, outputs=[o_hist_dropdown],
     ).then(
-        # DOA 2026-11-06: build the PDF right after the analysis, so the Download button is ready (one click)
+        # build the PDF right after the analysis, so the Download button is ready (one click)
         fn=export_report_pdf, inputs=[o_report_data], outputs=[o_pdf_file],
+    ).then(
+        fn=None, js=_VIS_NETWORK_INIT_JS,
     )
 
     load_history_btn.click(

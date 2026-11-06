@@ -122,8 +122,81 @@ def parse_documents(raw: str, profile: SubjectProfile) -> List[InputDocument]:
     return docs
 
 
-def gather(profile: SubjectProfile, docs_raw: str, use_local: bool, use_sec: bool, use_dark: bool) -> Tuple[list, list]:
+UPLOAD_TYPES = [".pdf", ".txt", ".md", ".csv", ".html", ".htm", ".docx", ".png", ".jpg", ".jpeg", ".tif", ".tiff"]
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+
+
+def _file_text(path: str) -> Tuple[str, str]:
+    """Plain text of one uploaded file and the method used. Never executes or renders the file."""
+    ext = os.path.splitext(path)[1].lower()
+    with open(path, "rb") as fh:
+        data = fh.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise ValueError("file larger than 25 MB")
+    if ext == ".pdf":
+        from journalist_research.extraction.pdf_text import extract_pdf_bytes
+        r = extract_pdf_bytes(data, ocr=True)
+        return "\n".join(r.pages), f"pdf:{r.engine}" + (" +OCR" if r.scanned_pages else "")
+    if ext == ".docx":
+        import zipfile, io
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            xml = z.read("word/document.xml").decode("utf-8", "replace")
+        xml = re.sub(r"</w:p>", "\n", xml)
+        return re.sub(r"<[^>]+>", "", xml), "docx"
+    if ext in (".html", ".htm"):
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(data, "html.parser")
+        for t in soup(["script", "style", "noscript"]):
+            t.decompose()
+        return soup.get_text("\n"), "html"
+    if ext in (".png", ".jpg", ".jpeg", ".tif", ".tiff"):
+        import subprocess
+        out = subprocess.run(["tesseract", path, "stdout", "-l", "eng+hin"], capture_output=True, timeout=120)
+        return out.stdout.decode("utf-8", "replace"), "image:OCR"
+    for enc in ("utf-8", "utf-16", "latin-1"):
+        try:
+            return data.decode(enc), "text"
+        except UnicodeDecodeError:
+            continue
+    return data.decode("utf-8", "replace"), "text"
+
+
+def parse_uploads(files, profile: SubjectProfile) -> Tuple[list, list]:
+    """Each uploaded file becomes its own investigator-supplied document (title = file name)."""
+    docs, notes = [], []
+    for f in files or []:
+        path = f if isinstance(f, str) else getattr(f, "name", None) or getattr(f, "path", None)
+        if not path:
+            continue
+        fname = os.path.basename(path)
+        if os.path.splitext(fname)[1].lower() not in UPLOAD_TYPES:
+            notes.append(f"{fname}: file type not supported, skipped")
+            continue
+        try:
+            text, how = _file_text(path)
+        except Exception as e:  # noqa: BLE001
+            notes.append(f"{fname}: could not read ({type(e).__name__})")
+            continue
+        text = re.sub(r"(?m)^\s*-{3,}\s*$", "\u2014", text or "").strip()
+        if not text:
+            notes.append(f"{fname}: no readable text")
+            continue
+        safe = re.sub(r"[^\w.\- ]", "_", fname)[:120]
+        got = parse_documents(f"TITLE: {safe}\nURL: upload://{safe}\n{text}", profile)
+        for d in got:
+            d.document_id = f"up{len(docs) + 1}-{d.document_id}"
+            docs.append(d)
+        notes.append(f"{fname}: read ({how}), {len(text):,} characters")
+    return docs, notes
+
+
+def gather(profile: SubjectProfile, docs_raw: str, use_local: bool, use_sec: bool, use_dark: bool,
+           files=None) -> Tuple[list, list]:
     docs, notes = parse_documents(docs_raw, profile), []
+    if files:
+        up, up_notes = parse_uploads(files, profile)
+        docs += up
+        notes += up_notes
     if use_local:
         try:
             from journalist_research.sources.collect import collect
@@ -139,7 +212,7 @@ def gather(profile: SubjectProfile, docs_raw: str, use_local: bool, use_sec: boo
     return docs, notes
 
 
-def run_doa(name, aliases, dob, city, orgs, question, docs_raw, use_local, use_sec, use_dark):
+def run_doa(name, aliases, dob, city, orgs, question, docs_raw, use_local, use_sec, use_dark, files=None):
     import gradio as gr
     from journalist_research.report.doa_pdf import render_doa_pdf
     name = (name or "").strip()
@@ -154,7 +227,7 @@ def run_doa(name, aliases, dob, city, orgs, question, docs_raw, use_local, use_s
                              city=(city or "").strip() or None, organizations=_split_list(orgs))
     question = (question or "").strip() or f"What can be verified about {name}?"
     try:
-        docs, notes = gather(profile, docs_raw, use_local, use_sec, use_dark)
+        docs, notes = gather(profile, docs_raw, use_local, use_sec, use_dark, files)
         inv = f"DOA-{stamp}-{sid[-6:]}"
         r = DOAPipeline(inv, question, profile, docs, artifact_root=ART).run()
         pdf = render_doa_pdf(r, {"name": name, "aliases": profile.aliases, "dob": profile.dob, "city": profile.city,
@@ -198,8 +271,7 @@ AUTO_DOWNLOAD_JS = """() => { setTimeout(() => {
 
 def build_doa_tab():
     import gradio as gr
-    gr.Markdown("**Deep OSINT Agent (DOA).** Builds an evidence graph from official lists, SEBI orders, ICIJ, "
-                "sanctions, dark-web monitoring and documents you paste. Leads, not verdicts.")
+    gr.Markdown("### Deep OSINT Agent (DOA)")
     with gr.Row():
         name = gr.Textbox(label="Subject name *", placeholder="e.g. Ravi Kalpnik")
         aliases = gr.Textbox(label="Aliases (comma separated)")
@@ -208,8 +280,9 @@ def build_doa_tab():
         city = gr.Textbox(label="City")
         orgs = gr.Textbox(label="Organisations (comma separated)")
     question = gr.Textbox(label="Question", placeholder="e.g. Did he take a loan before denying it?")
-    docs = gr.Textbox(label="Documents (optional): separate with a line ---; headers URL:/TITLE:/TIER:/KIND:/PUBLISHED:",
-                      lines=8)
+    files = gr.File(label="Documents (optional): upload one or more files (PDF, Word, text, HTML, images)",
+                    file_count="multiple", file_types=UPLOAD_TYPES, type="filepath")
+    docs = gr.State("")
     with gr.Row():
         use_local = gr.Checkbox(value=True, label="Local sources (SEBI, UK/OFAC/UN/EU/World Bank)")
         use_sec = gr.Checkbox(value=False, label="SEC EDGAR live search")
@@ -221,6 +294,6 @@ def build_doa_tab():
     fnd = gr.Dataframe(headers=["Status", "Statement", "Independent sources"], label="Findings", wrap=True)
     dl = (gr.DownloadButton(label="⬇ DOA dossier (PDF)", visible=False, elem_id="doa_pdf_download")
           if hasattr(gr, "DownloadButton") else gr.File(label="DOA dossier (PDF)", visible=False, elem_id="doa_pdf_download"))
-    run.click(run_doa, inputs=[name, aliases, dob, city, orgs, question, docs, use_local, use_sec, use_dark],
+    run.click(run_doa, inputs=[name, aliases, dob, city, orgs, question, docs, use_local, use_sec, use_dark, files],
               outputs=[summary, cov, fc, fnd, dl]).then(fn=None, js=AUTO_DOWNLOAD_JS)
     return run
