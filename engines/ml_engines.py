@@ -42,6 +42,18 @@ class NEREngine:
             log.info("NER ✓")
         except Exception as e:
             log.warning(f"NER not loaded: {e}")
+        # Hybrid rule layer (models/hybrid_rules/hybrid_rules_v*.json, newest
+        # version wins). Runs after the fine-tuned model: keeps its entities,
+        # validates pattern labels, adds rule/lexicon hits, maps PER->PERSON,
+        # de-duplicates. If the rules cannot load, NER behaves as before.
+        self.rules = None
+        self.last_provenance = {}
+        try:
+            from engines.hybrid_rules import HybridRules
+            self.rules = HybridRules(MODELS_DIR / "hybrid_rules")
+            log.info(f"NER hybrid rules v{self.rules.version} ✓")
+        except Exception as e:
+            log.warning(f"NER hybrid rules not loaded: {e}")
 
     # Common function words / punctuation the aggregation pipeline
     # occasionally mis-tags as an entity on longer or run-on text —
@@ -137,11 +149,18 @@ class NEREngine:
                 if e["entity_group"] == "MONEY" and not self._MONEY_LOOKS_FINANCIAL_RE.search(w_clean):
                     continue
                 ents.setdefault(e["entity_group"], []).append(w_clean)
+            if self.rules is not None:
+                try:
+                    ents, self.last_provenance = self.rules.apply(text, ents)
+                except Exception as re_err:
+                    log.error(f"NER hybrid rules error: {re_err}")
             return ents
         except Exception as e:
             log.error(f"NER error: {e}"); return {}
 
     def score(self, ents):
+        if getattr(self, "rules", None) is not None and self.rules.risk:
+            return self.rules.score(ents)
         s = 40.0
         s += len(ents.get("CRIME",  [])) * 10
         s += len(ents.get("WEAPON", [])) * 12
