@@ -14,7 +14,7 @@ present in the document), never assumed.
 from __future__ import annotations
 import hashlib, os, re, traceback
 from datetime import datetime, timezone
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 from journalist_research.runtime.doa_pipeline import DOAPipeline, InputDocument, SubjectProfile
 
@@ -191,12 +191,31 @@ def parse_uploads(files, profile: SubjectProfile) -> Tuple[list, list]:
 
 
 def gather(profile: SubjectProfile, docs_raw: str, use_local: bool, use_sec: bool, use_dark: bool,
-           files=None) -> Tuple[list, list]:
+           files=None, use_public: bool = False, social_raw: str = "", extra: Optional[dict] = None) -> Tuple[list, list]:
     docs, notes = parse_documents(docs_raw, profile), []
+    up = []
     if files:
         up, up_notes = parse_uploads(files, profile)
         docs += up
         notes += up_notes
+    lines = [l.strip() for l in (social_raw or "").splitlines() if l.strip()]
+    if use_public or lines:
+        try:
+            from journalist_research.sources.public_profile import collect_public, mark_uploaded_social
+            pdocs, pout, pnotes = collect_public(profile, lines) if use_public else (None, None, None)
+            if not use_public:     # only the named accounts/links, no news or encyclopaedia search
+                from journalist_research.sources.public_profile import social_documents, link_documents
+                sdocs, accts, links = social_documents(lines, profile)
+                pdocs, pout, pnotes = sdocs + link_documents(links[:10], profile), {"social_accounts": accts}, []
+            docs += pdocs
+            notes += pnotes
+            if extra is not None:
+                extra.update(pout)
+            k = mark_uploaded_social(up, pout.get("social_accounts", []), lines)
+            if k:
+                notes.append(f"{k} uploaded file(s) show a named account and were read as the subject's own posts")
+        except Exception as e:  # noqa: BLE001
+            notes.append(f"Public profile sources unavailable: {type(e).__name__}: {e}")
     if use_local:
         try:
             from journalist_research.sources.collect import collect
@@ -251,14 +270,14 @@ def _purge_upload(path) -> bool:
 
 
 def run_doa(name, aliases, dob, city, orgs, question, docs_raw, use_local, use_sec, use_dark, files=None,
-            subject_photo=None, request: _GrRequest = None):
+            subject_photo=None, use_public=True, social_raw="", request: _GrRequest = None):
     import gradio as gr
     from journalist_research.report.doa_pdf import render_doa_pdf
     name = (name or "").strip()
     if not name:
-        return ("**Subject name is required.**", None, None, None, gr.update(value=None, visible=False))
+        return ("**Subject name is required.**", None, None, None, None, gr.update(value=None, visible=False))
     if dob and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", dob.strip()):
-        return ("**Date of birth must be YYYY-MM-DD (or leave it empty).**", None, None, None,
+        return ("**Date of birth must be YYYY-MM-DD (or leave it empty).**", None, None, None, None,
                 gr.update(value=None, visible=False))
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     sid = "SUBJ-" + hashlib.sha256(name.lower().encode()).hexdigest()[:10]
@@ -274,9 +293,11 @@ def run_doa(name, aliases, dob, city, orgs, question, docs_raw, use_local, use_s
     qs = qs or [f"What can be verified about {name}?"]
     question = "\n".join(f"{i}. {q}" for i, q in enumerate(qs, 1)) if len(qs) > 1 else qs[0]
     try:
-        docs, notes = gather(profile, docs_raw, use_local, use_sec, use_dark, files)
+        extra = {}
+        docs, notes = gather(profile, docs_raw, use_local, use_sec, use_dark, files, use_public, social_raw, extra)
         inv = f"DOA-{stamp}-{sid[-6:]}"
-        r = DOAPipeline(inv, question, profile, docs, artifact_root=ART).run()
+        r = DOAPipeline(inv, question, profile, docs, artifact_root=ART,
+                        social_accounts=extra.get("social_accounts")).run()
         from journalist_research.storage import drive_store as _ds
         _uid = _ds.user_from_request(request)
         try:
@@ -313,7 +334,7 @@ def run_doa(name, aliases, dob, city, orgs, question, docs_raw, use_local, use_s
         _ds.flush_async()
     except Exception as e:  # noqa: BLE001
         return (f"**DOA run failed:** `{type(e).__name__}: {e}`\n\n```\n{traceback.format_exc()[-1500:]}\n```",
-                None, None, None, gr.update(value=None, visible=False))
+                None, None, None, None, gr.update(value=None, visible=False))
 
     try:
         from journalist_research.jobs.audit_chain import append as _audit
@@ -343,7 +364,32 @@ def run_doa(name, aliases, dob, city, orgs, question, docs_raw, use_local, use_s
         md.append("\n".join(f"- ⚠ {n}" for n in notes))
     if subject_photo:
         md.append(_face_md(face))
-    return ("\n\n".join(md), cov or None, fc or None, fnd or None, gr.update(value=pdf["pdf"], visible=True))
+    md.append(_social_md(r.get("social") or []))
+    life = [[i["interest"], i["category"], i["status"], i["basis"], i["independent_sources"],
+             ("HIGH-COST" if i["high_cost"] else ""), i["mentions"][0]["quote"],
+             i["mentions"][0]["publisher"] or i["mentions"][0]["url"]] for i in (r.get("lifestyle") or {}).get("items", [])]
+    return ("\n\n".join(m for m in md if m), cov or None, fc or None, fnd or None, life or None,
+            gr.update(value=pdf["pdf"], visible=True))
+
+
+def _social_md(accts) -> str:
+    if not accts:
+        return ""
+    out = ["**Social media** (named accounts are analysed, and their posts are the subject's own words, not verified facts; pages found through search are name-only leads):", "",
+           "| Platform | Account | Status | Posts | Period | Followers | Top hashtags | Most mentioned |",
+           "|---|---|---|---|---|---|---|---|"]
+    for a in accts:
+        if a.get("status") == "ASSESSED":
+            out.append(f"| {a['platform']} | {a.get('handle', '')} | analysed | {a.get('posts_analysed', 0)} | "
+                       f"{a.get('first_post') or '?'} to {a.get('last_post') or '?'} | {a.get('followers') or ''} | "
+                       f"{', '.join('#' + t for t, _ in a.get('top_hashtags', [])[:4])} | "
+                       f"{', '.join('@' + m for m, _ in a.get('top_mentions', [])[:3])} |")
+        elif a.get("status") == "CANDIDATE":
+            out.append(f"| {a['platform']} | [{a.get('handle', '')}]({a.get('url')}) | name-only lead (open and confirm) | "
+                       f"| | | {(a.get('snippet') or '')[:90].replace('|', '/')} | |")
+        else:
+            out.append(f"| {a['platform']} | {a.get('handle', '')} | not available | | | | {a.get('reason', '')} | |")
+    return "\n".join(out)
 
 
 AUTO_DOWNLOAD_JS = """() => { setTimeout(() => {
@@ -372,13 +418,21 @@ def build_doa_tab():
         use_local = gr.Checkbox(value=True, label="Local sources (SEBI, UK/OFAC/UN/EU/World Bank)")
         use_sec = gr.Checkbox(value=False, label="SEC EDGAR live search")
         use_dark = gr.Checkbox(value=True, label="Dark-web monitoring (leads only)")
+        use_public = gr.Checkbox(value=True, label="News, Wikipedia & lifestyle (public sources)")
+    social = gr.Textbox(label="Social media accounts & public links (one per line)", lines=3,
+                        placeholder="e.g.\nhttps://bsky.app/profile/name.bsky.social\nhttps://mastodon.social/@name\n"
+                                    "https://t.me/channelname\nhttps://x.com/name  (X, Instagram, Facebook, LinkedIn: "
+                                    "also upload screenshots of the posts)")
     run = gr.Button("🔎  Run DOA + PDF", variant="primary")
     summary = gr.Markdown()
     cov = gr.Dataframe(headers=["Source", "Status", "Reason"], label="Coverage", wrap=True)
     fc = gr.Dataframe(headers=["Type", "Severity", "What conflicts"], label="Contradictions", wrap=True)
     fnd = gr.Dataframe(headers=["Status", "Statement", "Independent sources"], label="Findings", wrap=True)
+    life = gr.Dataframe(headers=["Interest", "Category", "Status", "Basis", "Independent sources", "Cost",
+                                 "Quote", "Source"], label="Public lifestyle & interests", wrap=True)
     dl = (gr.DownloadButton(label="⬇ DOA dossier (PDF)", visible=False, elem_id="doa_pdf_download")
           if hasattr(gr, "DownloadButton") else gr.File(label="DOA dossier (PDF)", visible=False, elem_id="doa_pdf_download"))
-    run.click(run_doa, inputs=[name, aliases, dob, city, orgs, question, docs, use_local, use_sec, use_dark, files, photo],
-              outputs=[summary, cov, fc, fnd, dl]).then(fn=None, js=AUTO_DOWNLOAD_JS)
+    run.click(run_doa, inputs=[name, aliases, dob, city, orgs, question, docs, use_local, use_sec, use_dark, files, photo,
+                      use_public, social],
+              outputs=[summary, cov, fc, fnd, life, dl]).then(fn=None, js=AUTO_DOWNLOAD_JS)
     return run

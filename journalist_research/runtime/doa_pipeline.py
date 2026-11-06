@@ -31,13 +31,13 @@ from journalist_research.evidence.fact_contradiction import (
 from journalist_research.evidence.role_contradiction import (
     extract_role_assertions, detect_role_contradictions)
 
-PIPELINE_VERSION = "doa-pipeline-1.0.0"
+PIPELINE_VERSION = "doa-pipeline-1.1.0"
 
 DOSSIER_SECTIONS = [
     "Executive Intelligence Summary", "Identity Resolution", "Known Names & Aliases",
     "Biographical Timeline", "Career & Corporate History", "Companies & Ownership",
     "People & Relationship Network", "Legal & Court Intelligence", "Regulatory Intelligence",
-    "Financial/Corporate Signals", "Digital Footprint", "Historical Web Evidence",
+    "Financial/Corporate Signals", "Digital Footprint", "Public Lifestyle & Interests", "Historical Web Evidence",
     "Dark-Web Intelligence", "Claims & Evidence Matrix", "Contradiction Matrix",
     "Source Reliability Matrix", "Unverified Claims", "Evidence Gaps",
     "Unanswered Investigative Questions", "Journalist's Next Investigation Paths",
@@ -153,7 +153,8 @@ class DOAPipeline:
 
     def __init__(self, investigation_id: str, question: str, profile: SubjectProfile,
                  documents: List[InputDocument], *, checklist: Optional[List[str]] = None,
-                 artifact_root: Optional[str] = None):
+                 artifact_root: Optional[str] = None, social_accounts: Optional[List[Dict[str, Any]]] = None):
+        self.social_accounts = social_accounts or []
         self.investigation_id = investigation_id
         self.question = question
         self.profile = profile
@@ -462,6 +463,28 @@ class DOAPipeline:
         body["Journalist's Next Investigation Paths"] = "; ".join(
             s for c in fc for s in c.alternative_explanations[:1]) + ("; " if fc and gaps else "") + "; ".join(
             f"check {r['checklist_item']}" for r in gaps)
+        try:
+            from journalist_research.evidence.lifestyle_interests import section_text
+            body["Public Lifestyle & Interests"] = section_text(self.r.get("lifestyle") or {})
+        except Exception:
+            pass
+        soc = []
+        for a in self.r.get("social") or []:
+            if a.get("status") == "ASSESSED":
+                soc.append(f"{a['platform']} @{a.get('handle')}: {a.get('posts_analysed', 0)} posts "
+                           f"{a.get('first_post') or '?'}..{a.get('last_post') or '?'}, followers={a.get('followers')}, "
+                           f"hashtags={', '.join(t for t, _ in a.get('top_hashtags', [])[:5]) or 'none'}, "
+                           f"mentions={', '.join('@' + m for m, _ in a.get('top_mentions', [])[:4]) or 'none'}, "
+                           f"links={', '.join(d for d, _ in a.get('top_link_domains', [])[:4]) or 'none'}")
+            elif a.get("status") == "CANDIDATE":
+                soc.append(f"{a['platform']} page (name-only lead, open and confirm): {a.get('url')}")
+            else:
+                soc.append(f"{a['platform']} {a.get('handle', '')}: NOT_AVAILABLE ({a.get('reason', '')})")
+        if soc:
+            body["Digital Footprint"] = "; ".join(soc)
+        lp = (self.r.get("lifestyle") or {}).get("next_paths") or []
+        if lp:
+            body["Journalist's Next Investigation Paths"] = "; ".join(x for x in [body.get("Journalist's Next Investigation Paths", "")] + lp if x)
         for item, key in (("eCourts", "Legal & Court Intelligence"), ("SEBI", "Regulatory Intelligence"),
                           ("MCA", "Companies & Ownership")):
             row = next((r for r in self.r["coverage"] if r["checklist_item"] == item), None)
@@ -499,6 +522,18 @@ class DOAPipeline:
             self.r["artifact_path"] = str(p / "result.json")
         return self.r
 
+    # 7b. public lifestyle & interests (public sources only; protected areas excluded)
+    def lifestyle(self):
+        from journalist_research.evidence.lifestyle_interests import build_profile
+        dec = {i["document_id"]: i["decision"] for i in self.r.get("identity", [])}
+        names = [self.profile.name] + list(self.profile.aliases)
+        try:
+            self.r["lifestyle"] = build_profile([asdict(d) for d in self.documents], dec, names)
+        except Exception as exc:
+            self.r["lifestyle"] = {"status": "NOT_ASSESSED", "error": f"{type(exc).__name__}: {exc}", "items": []}
+        self.r["social"] = self.social_accounts
+        self._mark("LIFESTYLE", items=len(self.r["lifestyle"].get("items", [])), social=len(self.social_accounts))
+
     def run(self) -> Dict[str, Any]:
         self.question_layer()
         self.coverage()
@@ -507,5 +542,6 @@ class DOAPipeline:
         self.contradictions()
         self.timeline()
         self.findings()
+        self.lifestyle()
         self.synthesis_and_dossier()
         return self.finalize()

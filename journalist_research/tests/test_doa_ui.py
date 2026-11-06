@@ -40,8 +40,9 @@ t("official domain keeps PRIMARY_OFFICIAL", U.parse_documents("URL: https://www.
 t("published date kept", docs[0].published_at == "2024-06-21")
 
 out = U.run_doa("Ravi Kalpnik", "", "1970-01-01", "Delhi", "Kalpnik Traders Pvt Ltd",
-                "Did he deny a loan he had?", DOCS, False, False, False)
-md, cov, fc, fnd, dl = out
+                "Did he deny a loan he had?", DOCS, False, False, False, use_public=False)
+md, cov, fc, fnd, life, dl = out
+t("6 outputs incl. lifestyle table", len(out) == 6)
 path = dl.get("value") if isinstance(dl, dict) else None
 t("no ESTABLISHED from pasted, unofficial documents", not any(r[0] == "ESTABLISHED" for r in (fnd or [])))
 t("summary rendered", md.startswith("### DOA: Ravi Kalpnik"))

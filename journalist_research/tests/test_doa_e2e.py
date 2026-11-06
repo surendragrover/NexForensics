@@ -184,7 +184,7 @@ def e2e_tests(artifact_root):
     check("coverage: negative wording neutral", "not proof of absence" in sebi["reason"])
 
     secs = r["dossier"]["sections"]
-    check("dossier: all 20 sections present in spec order", [s["title"] for s in secs] == DOSSIER_SECTIONS)
+    check("dossier: all sections present in spec order", [s["title"] for s in secs] == DOSSIER_SECTIONS)
     check("dossier: empty sections rendered as NOT_ASSESSED with reason",
           all(s["body"].startswith("NOT_ASSESSED:") for s in secs if s["status"] == "NOT_ASSESSED"))
     check("dossier: dark-web marked not performed",
