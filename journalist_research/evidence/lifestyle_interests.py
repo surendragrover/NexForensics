@@ -49,11 +49,13 @@ HIGH_COST = re.compile(r"race ?horse|stud farm|polo|super ?yacht|yacht|private j
                        re.I)
 # a word that says the sentence is about a pastime, not just a passing mention
 CUES = re.compile(r"\b(hobby|hobbies|passion(?:ate)?|avid|keen|fond of|enjoys?|enjoyed|loves?|loved|interest(?:ed)? in|"
-                  r"plays?|played|owns?|owned|bought|member of|collector|collects?|spends? (?:his|her|their) "
+                  r"plays?|played|owns?|owned|owners?|co-?owners?|owning|bought|buys?|sponsor(?:s|ed|ing)?|patron|breeds?|breeder|"
+                  r"races?|raced|team principal|member of|collector|collects?|spends? (?:his|her|their) "
                   r"(?:weekends|free time|holidays)|took up|pastime|lavish|splurge\w*|known for)\b|शौक|शौकीन|पसंद|रुचि",
                   re.I)
 # whole term counts on its own (unambiguous lifestyle words)
 STRONG = re.compile(r"hobby|hobbies|pastime|race ?horse|polo|yacht|private jet|casino|gymkhana|golf|art collect|"
+                    r"formula (?:one|1)|stud farm|vintage car|classic car|motor ?racing|horse ?racing|"
                     r"शौक|शौकीन", re.I)
 # sentences touching protected areas are skipped entirely
 SENSITIVE = re.compile(
@@ -83,8 +85,20 @@ _TERMS = [(cat, _canon(t, cat), re.compile(r"(?<![\w])(" + t + r")(?![\w])", re.
           for cat, ts in CATEGORIES.items() for t in ts]
 
 
+_CITE = re.compile(r"\[\s*(?:\d+|[a-z]|citation needed|note \d+)\s*\]", re.I)
+
+
 def _sentences(text: str) -> List[str]:
-    return [s.strip() for s in re.split(r"(?<=[.!?।])\s+|\n+", text or "") if len(s.strip()) > 12]
+    """Sentences, not lines. Page extractors put a newline at every link, so single newlines are joined
+    (a blank line still ends a paragraph) and [12]-style citation marks are dropped first."""
+    t = _CITE.sub(" ", text or "")
+    t = re.sub(r"\n\s*\n+", " \u2029 ", t)                   # paragraph break -> hard boundary
+    t = re.sub(r"\n(?=\s*\[\d{4}-\d{2}-\d{2}\])", " \u2029 ", t)    # one dated post per line stays one unit
+    t = re.sub(r"\s*\n\s*", " ", t)
+    t = re.sub(r"\s+([.,;:!?])", r"\1", t)
+    parts = re.split(r"(?<=[.!?।])\s+|\s*\u2029\s*", t)
+    # over ~400 chars is a glued infobox or navbox, not prose: skipped
+    return [" ".join(p.split()) for p in parts if 12 < len(p.strip()) <= 400]
 
 
 def _name_res(names: List[str]) -> List[re.Pattern]:

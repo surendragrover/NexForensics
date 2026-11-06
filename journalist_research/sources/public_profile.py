@@ -94,16 +94,109 @@ def wikipedia_documents(profile: SubjectProfile, f: Optional[PoliteFetcher] = No
 
 
 # ------------------------------------------------------------------ news
+GDELT_GAP = 5.5           # GDELT asks for at most one request every 5 s, from this whole server
+GDELT_CACHE_FRESH = 6 * 3600
+GDELT_CACHE_STALE_OK = 7 * 86400
+NEWS_SKIP_HOSTS = ("wikipedia.org", "wikimedia.org", "facebook.com", "instagram.com", "x.com", "twitter.com",
+                   "linkedin.com", "youtube.com", "threads.net", "threads.com", "duckduckgo.com")
+
+
+def _gdelt_cache_path(q: str):
+    import os
+    d = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "runtime", "artifacts", "cache", "gdelt")
+    os.makedirs(d, exist_ok=True)
+    return os.path.join(d, _sha(q)[:24] + ".json")
+
+
+def _gdelt_get(api: str, f: PoliteFetcher, deadline: float) -> Tuple[List[dict], str]:
+    """Article list for one query. Spacing is shared by every process on the server through a lock file,
+    a 429 is retried once after the gap, and a cached list (6 h fresh, 7 days stale) answers when GDELT throttles.
+    Returns (articles, how): how is LIVE, CACHED, CACHED_STALE or an error name."""
+    import fcntl, os
+    cp = _gdelt_cache_path(api)
+    try:
+        age = time.time() - os.path.getmtime(cp)
+        if age < GDELT_CACHE_FRESH:
+            return json.load(open(cp)).get("articles", []), "CACHED"
+    except OSError:
+        age = None
+    err = "UNAVAILABLE"
+    for attempt in range(2):
+        if deadline and time.monotonic() + GDELT_GAP > deadline:
+            break
+        with open("/tmp/doa_gdelt.lock", "a+") as lk:
+            fcntl.flock(lk, fcntl.LOCK_EX)
+            try:
+                lk.seek(0); last = float(lk.read().strip() or 0)
+            except ValueError:
+                last = 0
+            wait = GDELT_GAP - (time.time() - last)
+            if wait > 0:
+                time.sleep(wait)
+            try:
+                body = f.get(api).text or "{}"
+                err = ""
+            except SourceBlocked as e:
+                err = "RATE_LIMITED" if "429" in str(e) else "BLOCKED"
+            except Exception as e:  # noqa: BLE001
+                err = type(e).__name__
+            lk.seek(0); lk.truncate(); lk.write(str(time.time())); lk.flush()
+        if not err:
+            try:
+                data = json.loads(body)
+            except ValueError:                       # GDELT answers throttling with plain text
+                err = "RATE_LIMITED" if "limit requests" in body else "BAD_RESPONSE"
+                continue
+            try:
+                json.dump({"articles": data.get("articles", [])}, open(cp, "w"))
+            except OSError:
+                pass
+            return data.get("articles", []), "LIVE"
+        if err != "RATE_LIMITED":
+            break
+    if age is not None and age < GDELT_CACHE_STALE_OK:
+        return json.load(open(cp)).get("articles", []), "CACHED_STALE"
+    raise SourceBlocked(err)
+
+
+def _search_news_list(profile: SubjectProfile, deadline: float) -> List[dict]:
+    """Fallback when GDELT is unavailable: a public search engine's result page for the name.
+    Only the result list is read here; each article page is then fetched politely (robots respected)."""
+    from journalist_research.web_research.duckduckgo_provider import DuckDuckGoPublicWebProvider
+    if deadline and time.monotonic() > deadline - 8:
+        return []
+    org = (profile.organizations or [""])[0]
+    q = f'"{profile.name}" {org} news'.strip()
+    out = []
+    for h in DuckDuckGoPublicWebProvider(timeout=12).search(q, max_results=20):
+        host = urlparse(h.url).netloc.lower()
+        if not host or any(host == d or host.endswith("." + d) for d in NEWS_SKIP_HOSTS):
+            continue
+        out.append({"url": h.url, "title": h.title, "seendate": "", "via": "search"})
+    return out
+
+
 def gdelt_documents(profile: SubjectProfile, f: Optional[PoliteFetcher] = None, deadline: float = 0) -> List[InputDocument]:
     f = f or _fetcher()
     q = quote(f'"{profile.name}"')
     api = f"https://api.gdeltproject.org/api/v2/doc/doc?query={q}&mode=artlist&maxrecords=25&format=json&sort=hybridrel"
+    via, gerr = "GDELT", ""
     try:
-        arts = json.loads(f.get(api).text or "{}").get("articles", [])
+        arts, how = _gdelt_get(api, f, deadline)
+        via = "GDELT" if how == "LIVE" else f"GDELT ({how.lower().replace('_', ' ')})"
     except Exception as e:  # noqa: BLE001
-        return [InputDocument(document_id="gdelt-unavailable", source_id="gdelt", url=api, title="GDELT", text="",
-                              status="UNAVAILABLE", checklist_item=CHECK_NEWS, mention={"error": type(e).__name__})]
+        arts, gerr = [], (str(e) or type(e).__name__)
     if not arts:
+        try:
+            arts = _search_news_list(profile, deadline)
+            via = f"search engine (GDELT {gerr.lower() or 'no result'})"
+        except Exception as e:  # noqa: BLE001
+            arts = []
+            gerr = gerr or type(e).__name__
+    if not arts:
+        if gerr:
+            return [InputDocument(document_id="gdelt-unavailable", source_id="gdelt", url=api, title="GDELT", text="",
+                                  status="UNAVAILABLE", checklist_item=CHECK_NEWS, mention={"error": gerr})]
         return [InputDocument(document_id="gdelt-none", source_id="gdelt", url=api, title="GDELT", text="",
                               status="NO_RESULT", checklist_item=CHECK_NEWS)]
     seen_hosts, picks = set(), []
@@ -132,6 +225,8 @@ def gdelt_documents(profile: SubjectProfile, f: Optional[PoliteFetcher] = None, 
             if not res:
                 continue
             a, r, text, ttl, pub = res
+            if len(text.strip()) < 200:              # paywall or script-only page: nothing to read
+                continue
             host = urlparse(r.final_url).netloc
             sd = a.get("seendate", "")
             docs.append(InputDocument(
@@ -139,11 +234,11 @@ def gdelt_documents(profile: SubjectProfile, f: Optional[PoliteFetcher] = None, 
                 title=ttl or a.get("title", ""), text=text[:40000], tier="MEDIUM", publisher=host,
                 source_kind="REPORT", lineage_id=f"news:{_sha(r.final_url)[:16]}",
                 published_at=pub or (f"{sd[:4]}-{sd[4:6]}-{sd[6:8]}" if len(sd) >= 8 else None),
-                checklist_item=CHECK_NEWS, mention=_mention(text, profile)))
+                checklist_item=CHECK_NEWS, mention=_mention(text, profile, found_via=via)))
     if not docs:
         docs.append(InputDocument(document_id="gdelt-fetch-failed", source_id="gdelt", url=api, title="GDELT", text="",
                                   status="UNAVAILABLE", checklist_item=CHECK_NEWS,
-                                  mention={"note": f"{len(picks)} articles listed, none fetchable"}))
+                                  mention={"note": f"{len(picks)} articles listed via {via}, none fetchable"}))
     return docs
 
 

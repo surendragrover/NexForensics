@@ -31,7 +31,7 @@ from journalist_research.evidence.fact_contradiction import (
 from journalist_research.evidence.role_contradiction import (
     extract_role_assertions, detect_role_contradictions)
 
-PIPELINE_VERSION = "doa-pipeline-1.1.0"
+PIPELINE_VERSION = "doa-pipeline-1.2.0"
 
 DOSSIER_SECTIONS = [
     "Executive Intelligence Summary", "Identity Resolution", "Known Names & Aliases",
@@ -153,8 +153,10 @@ class DOAPipeline:
 
     def __init__(self, investigation_id: str, question: str, profile: SubjectProfile,
                  documents: List[InputDocument], *, checklist: Optional[List[str]] = None,
-                 artifact_root: Optional[str] = None, social_accounts: Optional[List[Dict[str, Any]]] = None):
+                 artifact_root: Optional[str] = None, social_accounts: Optional[List[Dict[str, Any]]] = None,
+                 corporate: Optional[Dict[str, Any]] = None):
         self.social_accounts = social_accounts or []
+        self.corporate = corporate
         self.investigation_id = investigation_id
         self.question = question
         self.profile = profile
@@ -485,11 +487,21 @@ class DOAPipeline:
         lp = (self.r.get("lifestyle") or {}).get("next_paths") or []
         if lp:
             body["Journalist's Next Investigation Paths"] = "; ".join(x for x in [body.get("Journalist's Next Investigation Paths", "")] + lp if x)
+        if self.r.get("corporate") and (self.r.get("network") or {}).get("stats"):
+            from journalist_research.evidence.corporate_network import section_texts
+            ct = section_texts(self.r["corporate"], self.r["network"])
+            for k in ("Companies & Ownership", "People & Relationship Network"):
+                if ct.get(k):
+                    body[k] = ct[k]
+            if ct.get("_next"):
+                body["Journalist's Next Investigation Paths"] = "; ".join(
+                    x for x in [body.get("Journalist's Next Investigation Paths", "")] + ct["_next"] if x)
         for item, key in (("eCourts", "Legal & Court Intelligence"), ("SEBI", "Regulatory Intelligence"),
                           ("MCA", "Companies & Ownership")):
             row = next((r for r in self.r["coverage"] if r["checklist_item"] == item), None)
             if row:
-                body[key] = f"{row['status']}: {row['reason']}"
+                body[key] = (body[key] + f"; India MCA: {row['status']}: {row['reason']}") if body.get(key) and item == "MCA" \
+                    else f"{row['status']}: {row['reason']}"
         out = []
         for n, title in enumerate(DOSSIER_SECTIONS, 1):
             text = body.get(title, "")
@@ -534,6 +546,20 @@ class DOAPipeline:
         self.r["social"] = self.social_accounts
         self._mark("LIFESTYLE", items=len(self.r["lifestyle"].get("items", [])), social=len(self.social_accounts))
 
+    # 7c. companies, directors and shell-company indicators (registries; leads only)
+    def network(self):
+        if not self.corporate:
+            return
+        from journalist_research.evidence.corporate_network import build_network, to_kge
+        try:
+            net = build_network(self.corporate)
+            self.r["corporate"] = self.corporate
+            self.r["network"] = net
+            self.r["network_kge"] = to_kge(net)
+            self._mark("NETWORK", **net["stats"])
+        except Exception as exc:
+            self.r["network"] = {"status": "NOT_ASSESSED", "error": f"{type(exc).__name__}: {exc}"}
+
     def run(self) -> Dict[str, Any]:
         self.question_layer()
         self.coverage()
@@ -543,5 +569,6 @@ class DOAPipeline:
         self.timeline()
         self.findings()
         self.lifestyle()
+        self.network()
         self.synthesis_and_dossier()
         return self.finalize()

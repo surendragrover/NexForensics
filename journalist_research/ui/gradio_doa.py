@@ -270,7 +270,7 @@ def _purge_upload(path) -> bool:
 
 
 def run_doa(name, aliases, dob, city, orgs, question, docs_raw, use_local, use_sec, use_dark, files=None,
-            subject_photo=None, use_public=True, social_raw="", request: _GrRequest = None):
+            subject_photo=None, use_public=True, social_raw="", use_corp=True, request: _GrRequest = None):
     import gradio as gr
     from journalist_research.report.doa_pdf import render_doa_pdf
     name = (name or "").strip()
@@ -294,10 +294,25 @@ def run_doa(name, aliases, dob, city, orgs, question, docs_raw, use_local, use_s
     question = "\n".join(f"{i}. {q}" for i, q in enumerate(qs, 1)) if len(qs) > 1 else qs[0]
     try:
         extra = {}
+        _corp_fut = None
+        if use_corp:
+            import concurrent.futures as _cf
+            from journalist_research.sources.corporate_registry import collect_corporate
+            _ex = _cf.ThreadPoolExecutor(1)
+            _corp_fut = _ex.submit(collect_corporate, profile)
         docs, notes = gather(profile, docs_raw, use_local, use_sec, use_dark, files, use_public, social_raw, extra)
+        corp = None
+        if _corp_fut is not None:
+            try:
+                corp = _corp_fut.result(timeout=45)
+                for _k, _v in corp.get("sources", {}).items():
+                    if _v.get("status") not in ("OK", "NOT_ASSESSED"):
+                        notes.append(f"Company registry {_k}: {_v.get('status')} {'; '.join(_v.get('notes', []))}")
+            except Exception as e:  # noqa: BLE001
+                notes.append(f"Company registries not searched ({type(e).__name__})")
         inv = f"DOA-{stamp}-{sid[-6:]}"
         r = DOAPipeline(inv, question, profile, docs, artifact_root=ART,
-                        social_accounts=extra.get("social_accounts")).run()
+                        social_accounts=extra.get("social_accounts"), corporate=corp).run()
         from journalist_research.storage import drive_store as _ds
         _uid = _ds.user_from_request(request)
         try:
@@ -365,6 +380,9 @@ def run_doa(name, aliases, dob, city, orgs, question, docs_raw, use_local, use_s
     if subject_photo:
         md.append(_face_md(face))
     md.append(_social_md(r.get("social") or []))
+    if r.get("corporate") and (r.get("network") or {}).get("stats"):
+        from journalist_research.evidence.corporate_network import markdown as _net_md
+        md.append(_net_md(r["corporate"], r["network"]))
     life = [[i["interest"], i["category"], i["status"], i["basis"], i["independent_sources"],
              ("HIGH-COST" if i["high_cost"] else ""), i["mentions"][0]["quote"],
              i["mentions"][0]["publisher"] or i["mentions"][0]["url"]] for i in (r.get("lifestyle") or {}).get("items", [])]
@@ -419,6 +437,7 @@ def build_doa_tab():
         use_sec = gr.Checkbox(value=False, label="SEC EDGAR live search")
         use_dark = gr.Checkbox(value=True, label="Dark-web monitoring (leads only)")
         use_public = gr.Checkbox(value=True, label="News, Wikipedia & lifestyle (public sources)")
+        use_corp = gr.Checkbox(value=True, label="Companies & directors (UK registry, Offshore Leaks, GLEIF)")
     social = gr.Textbox(label="Social media accounts & public links (one per line)", lines=3,
                         placeholder="e.g.\nhttps://bsky.app/profile/name.bsky.social\nhttps://mastodon.social/@name\n"
                                     "https://t.me/channelname\nhttps://x.com/name  (X, Instagram, Facebook, LinkedIn: "
@@ -433,6 +452,6 @@ def build_doa_tab():
     dl = (gr.DownloadButton(label="⬇ DOA dossier (PDF)", visible=False, elem_id="doa_pdf_download")
           if hasattr(gr, "DownloadButton") else gr.File(label="DOA dossier (PDF)", visible=False, elem_id="doa_pdf_download"))
     run.click(run_doa, inputs=[name, aliases, dob, city, orgs, question, docs, use_local, use_sec, use_dark, files, photo,
-                      use_public, social],
+                      use_public, social, use_corp],
               outputs=[summary, cov, fc, fnd, life, dl]).then(fn=None, js=AUTO_DOWNLOAD_JS)
     return run
