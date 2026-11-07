@@ -1224,6 +1224,21 @@ def export_report_pdf(report_data):
         else:
             story.append(P("No photo evidence submitted."))
 
+        # p28: Narrative vs document consistency (NLI v3)
+        story.append(Spacer(1, 10))
+        story.append(Paragraph("Narrative vs Document Consistency (NLI v3 - experimental)", h3))
+        _nli = d.get("nli_claim_check") or {}
+        if _nli.get("status") == "ASSESSED":
+            _c = _nli.get("counts", {})
+            story.append(P(f"Supported {_c.get('SUPPORTED',0)} | Contradicted {_c.get('CONTRADICTED',0)} | No evidence in document {_c.get('NO_EVIDENCE',0)}"))
+            for _cl in _nli.get("claims", []):
+                story.append(P(f"  [{_cl['verdict']}] {_cl['claim'][:200]}", evidence_style))
+                if _cl.get("document_sentence"):
+                    story.append(P(f"      document: {_cl['document_sentence'][:200]}", small))
+        else:
+            story.append(P(f"NOT ASSESSED - {_nli.get('reason', 'not run')}"))
+        story.append(P(_nli.get("note", "Experimental; leads only."), small))
+
         # Voice Evidence
         story.append(Spacer(1, 10))
         story.append(Paragraph("Voice Evidence Analysis", h3))

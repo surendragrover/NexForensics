@@ -1,3 +1,4 @@
+import html as _html  # p28
 """
 InvestigatorAI — Final Gradio App
 ====================================
@@ -171,7 +172,11 @@ ocr_eng  = OCREngine      (MODELS_DIR / "ocr")
 xgb_eng  = XGBPatternEngine(MODELS_DIR / "risk_model")
 ds_eng   = DatasetSearchEngine()
 mo_eng   = MOFingerprintEngine()
-qwen_eng = QwenGGUFEngine(MODELS_DIR / "qwen" / "model.gguf")
+class _QwenDisabled:  # p28: raw (not fine-tuned) Qwen 0.5B q2_k removed from all scoring/text
+    ready = False
+qwen_eng = _QwenDisabled()
+from engines.nli_engine import NLIEngine  # p28
+nli_eng = NLIEngine()
 cctv_eng = HFImageClassifierEngine("CCTV Crime Classifier", path=MODELS_DIR / "crime_cctv")
 deepfake_eng = HFImageClassifierEngine(
     "Deepfake Detector",
@@ -815,6 +820,12 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
     # ── DOCUMENT EVIDENCE EXTRACTION (OCR) ──────────────────────────────
     ocr_text = ocr_eng.extract(id_doc) if id_doc and ocr_eng.ready else ""
     ocr_sc, ocr_res = (ocr_eng.score(ocr_text, suspect_name) if ocr_eng.ready else (0.0, {})) if ocr_text else (0.0, {})
+    # p28: narrative-vs-document consistency (NLI v3); not part of any score
+    try:
+        nli_res = nli_eng.check(modus or "", ocr_text or "")
+    except Exception as _e:
+        log.error(f"NLI check error: {_e}")
+        nli_res = {"status": "NOT_ASSESSED", "reason": f"error: {_e}", "claims": []}
 
     # ── CRIME CLASSIFICATION FROM EVIDENCE ────────────────────────────────
     crime_info = _classify_crime_from_evidence(entities, modus, suspect_name, ocr_text, face_res, vox_res, location,
@@ -1307,6 +1318,14 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
     if id_doc: ev_submitted.append("Document")
     if modus: ev_submitted.append("Statement")
     indicators_html += f"<div style='font-size:12px;color:#60a5fa;margin-bottom:12px;'>Evidence Submitted: {', '.join(ev_submitted) if ev_submitted else 'None'}</div>"
+    # p28: NLI consistency summary (not a score)
+    if nli_res.get("status") == "ASSESSED":
+        _c = nli_res.get("counts", {})
+        _rows = "".join(f"<div style='font-size:11px;color:#94a3b8;margin:2px 0;'>[{_html.escape(c['verdict'])}] {_html.escape(c['claim'][:140])}</div>" for c in nli_res.get("claims", []) if c["verdict"] != "NO_EVIDENCE")
+        indicators_html += (f"<div style='font-size:12px;color:#f8fafc;margin-bottom:10px;'>Narrative vs Document (NLI v3, experimental): "
+                            f"Supported {_c.get('SUPPORTED',0)} · Contradicted {_c.get('CONTRADICTED',0)} · No evidence {_c.get('NO_EVIDENCE',0)}{_rows}</div>")
+    else:
+        indicators_html += f"<div style='font-size:12px;color:#94a3b8;margin-bottom:10px;'>Narrative vs Document (NLI v3): NOT ASSESSED - {_html.escape(str(nli_res.get('reason','')))}</div>"
 
     indicators_html += (
         bar("Text Evidence Risk", ner_sc, "#60a5fa")
@@ -1528,6 +1547,17 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
     else:
         lines.append(f"    {face_evidence.get('status', 'N/A')}")
 
+    lines += ["", "  NARRATIVE vs DOCUMENT CONSISTENCY (NLI v3 - EXPERIMENTAL, leads only)"]
+    if nli_res.get("status") == "ASSESSED":
+        _c = nli_res.get("counts", {})
+        lines.append(f"    Supported {_c.get('SUPPORTED',0)} | Contradicted {_c.get('CONTRADICTED',0)} | No evidence in document {_c.get('NO_EVIDENCE',0)}")
+        for _cl in nli_res.get("claims", []):
+            lines.append(f"    [{_cl['verdict']}] {_cl['claim'][:160]}")
+            if _cl.get("document_sentence"):
+                lines.append(f"        document: {_cl['document_sentence'][:160]}")
+    else:
+        lines.append(f"    NOT ASSESSED - {nli_res.get('reason', '')}")
+    lines.append(f"    {nli_res.get('note', '')}")
     lines += ["", "  VOICE EVIDENCE"]
     if voice_evidence.get("status") == "Evidence analyzed":
         for finding in voice_evidence.get("findings", []):
@@ -1874,6 +1904,7 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         "qwen_deception": qwen_deception,
         "qwen_hypotheses": qwen_hypotheses,
         "qwen_story_draft": qwen_story_draft,
+        "nli_claim_check": nli_res,
         "qwen_loaded": qwen_eng.ready,
         "cctv_result": cctv_result,
         "cctv_source_label": cctv_source_label,
@@ -2639,12 +2670,22 @@ def regenerate_story_draft(report_data):
             value="No analysis has been run yet — click Investigate first.",
             visible=True,
         )
-    if not qwen_eng.ready:
-        return gr.update(
-            value="The AI story-draft model is not loaded on this server "
-                  "(check models/qwen/model.gguf and the startup logs).",
-            visible=True,
-        )
+    # p28: template draft from verified findings only (no LLM, nothing invented)
+    if True:
+        rd = report_data
+        out = [f"CASE {rd.get('case_id','')} - DRAFT (built only from this report's findings; edit before use)", ""]
+        dr = (rd.get("reasoning") or {}).get("draft_report", "")
+        if dr:
+            out += [dr, ""]
+        nr = rd.get("nli_claim_check") or {}
+        if nr.get("status") == "ASSESSED":
+            out.append("Narrative vs document (NLI v3, experimental):")
+            for c in nr.get("claims", []):
+                if c["verdict"] != "NO_EVIDENCE":
+                    out.append(f"- [{c['verdict']}] {c['claim']}  (document: {c['document_sentence']})")
+            out.append("")
+        out.append("Every statement above must be verified against the cited source before publication.")
+        return gr.update(value="\n".join(out), visible=True)
     modus = report_data.get("modus", "")
     if not modus.strip():
         return gr.update(
