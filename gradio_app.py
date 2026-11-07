@@ -774,7 +774,13 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
 
     # ── DEEPFAKE / TAMPER DETECTION (same submitted photo) ─────────────────
     image_quality = _assess_image_quality(photo) if photo is not None else None
-    deepfake_result = deepfake_eng.classify(photo) if photo is not None and deepfake_eng.ready else None
+    # p24: classify the detected face crop, not the full photo (full photos were all called Deepfake)
+    _df_box = None
+    _df_input = photo
+    if photo is not None and deepfake_eng.ready:
+        from engines.ml_engines import crop_face_for_deepfake
+        _df_input, _df_box = crop_face_for_deepfake(photo)
+    deepfake_result = deepfake_eng.classify(_df_input) if photo is not None and deepfake_eng.ready else None
     if deepfake_result:
         top = deepfake_result[0]
         is_fake_label = "fake" in top["label"].lower() or "deepfake" in top["label"].lower()
@@ -794,6 +800,13 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
             )
         if image_quality and image_quality[0] == "Poor":
             tampering_status += f". ⚠ IMAGE QUALITY: {image_quality[1]} — confidence score above may be unreliable."
+        if _df_box:
+            tampering_status += (f". Checked on auto-cropped face region x={_df_box[0]}, y={_df_box[1]}, "
+                                 f"w={_df_box[2]}, h={_df_box[3]} (original photo SHA-256 unchanged)")
+        else:
+            tampering_status += ". ⚠ No face detected — full photo checked; result NOT reliable"
+        tampering_status += (". EXPERIMENTAL — not evidence (internal test: 4 of 12 real face crops "
+                             "were wrongly called deepfake)")
     elif photo is not None and not deepfake_eng.ready:
         tampering_status = "N/A — Deepfake/tamper detection module offline"
     else:
@@ -2880,7 +2893,11 @@ with gr.Blocks(theme=THEME, title="InvestigatorAI",
             gr.HTML("<p style='font-size:10px;color:#475569;letter-spacing:.1em;"
                     "text-transform:uppercase;margin:10px 0 4px;'>"
                     "👤 Suspect Photo <span style='color:#2d3a50;font-weight:400;'>"
-                    "— for face-match analysis</span></p>")
+                    "— for face-match analysis</span></p>"
+                    "<p style='font-size:11px;color:#f59e0b;margin:0 0 4px;'>"
+                    "💡 Best result: only the face, front-facing, clear light, one person. "
+                    "सबसे अच्छे नतीजे के लिए सिर्फ़ चेहरा, सामने से, साफ़ रोशनी में। "
+                    "(Face is auto-cropped for the deepfake check.)</p>")
             photo = gr.Image(label="📷 Face Photo (ArcFace)", type="pil",
                               height=180, sources=["upload"])
 

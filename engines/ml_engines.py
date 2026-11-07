@@ -671,6 +671,27 @@ def _extract_video_frame(video_path, at_ratio=0.5):
         return None
 
 
+def crop_face_for_deepfake(pil_img, pad=0.25):
+    """p24: the deepfake model was trained on face crops. On full photos it
+    called 12/12 real portraits 'Deepfake'. Returns (image, box) where box is
+    (x, y, w, h) of the padded largest face in original pixels, or (pil_img, None)
+    when no face is found."""
+    try:
+        from journalist_research.biometrics.face_detect import detect_faces
+        faces = detect_faces(pil_img, min_score=0.6)
+        if not faces:
+            return pil_img, None
+        (x, y, w, h), _ = faces[0]
+        W, H = pil_img.size
+        p = int(pad * max(w, h))
+        x0, y0 = max(0, x - p), max(0, y - p)
+        x1, y1 = min(W, x + w + p), min(H, y + h + p)
+        return pil_img.convert("RGB").crop((x0, y0, x1, y1)), (x0, y0, x1 - x0, y1 - y0)
+    except Exception as e:
+        log.warning(f"deepfake face crop failed: {e}")
+        return pil_img, None
+
+
 class HFImageClassifierEngine:
     """
     Generic wrapper around a HuggingFace AutoModelForImageClassification
