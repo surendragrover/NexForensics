@@ -11,6 +11,7 @@ LABELS = ("entailment", "neutral", "contradiction")
 THRESH = 0.80
 MAX_CLAIMS = 12
 TOP_K = 3
+MIN_CLAIM_TOKENS = 5  # p30
 _WORD = re.compile(r"[\w\u0900-\u097F]{3,}", re.UNICODE)
 _STOP = {"the","and","was","were","with","from","that","this","for","has","have","had","his","her",
          "their","they","are","not","but","been","into","which","who","its","also","per","said"}
@@ -68,7 +69,8 @@ class NLIEngine:
                         "Leads for human review, not findings."}
         if not self.ready:
             base["reason"] = "NLI model not loaded"; return base
-        claims = _sentences(narrative)[:MAX_CLAIMS]
+        # p30: skip short fragments/labels (e.g. "QA TEST, public reporting only.")
+        claims = [c for c in _sentences(narrative) if len(_toks(c)) >= MIN_CLAIM_TOKENS][:MAX_CLAIMS]
         evid = _sentences(document_text)
         if not claims:
             base["reason"] = "no narrative text"; return base

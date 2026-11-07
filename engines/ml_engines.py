@@ -549,7 +549,12 @@ class OCREngine:
         s = 15.0
         name_match = None
         if suspect_name and suspect_name.strip():
-            name_match = suspect_name.strip().lower() in ocr_text.lower()
+            # p30: token match - every name word must appear as a word in the document
+            # ("Nirav Modi" matches "NIRAV DEEPAK MODI"; middle names are not a mismatch)
+            import re as _re
+            _doc_words = set(_re.findall(r"[\w\u0900-\u097F]+", ocr_text.lower()))
+            _name_words = [w for w in _re.findall(r"[\w\u0900-\u097F]+", suspect_name.lower()) if len(w) >= 2]
+            name_match = bool(_name_words) and all(w in _doc_words for w in _name_words)
             s += 5 if name_match else 50
         if len(ocr_text) < 8:
             s += 15
