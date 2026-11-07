@@ -1059,7 +1059,7 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         ner_sc*W["ner"] + vox_sc*W["voice"] + face_sc*W["face"] + ocr_sc*W["ocr"] +
         pat_sc*W["pattern"] + net_risk*W["network"] + fin_risk*W["financial"] +
         fraud_indicators.get("digital_anomaly", 0)*W["digital"], 99), 1)
-    credibility = round(max(5, 100 - deception - random.uniform(0,6)), 1)
+    credibility = round(max(5, 100 - deception), 1)  # p27: removed random.uniform(0,6); scores must be reproducible
     
     # ─── EXPLAINABLE RISK SCORE ────────────────────────────────────────────
     # Risk has TWO components:
@@ -1276,7 +1276,7 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
 
     # If watchlist override, also bump deception/risk scores for reporting
     if watchlist_override and _possible_bump:
-        deception = max(deception, 85.0)
+        # p27: a watchlist name hit raises case risk only; it is not evidence of deception
         risk = max(risk, 88.0)
     risk_disp = _rr_risk_display(risk, not risk_is_heuristic, crime_info.get("severity"))
 
