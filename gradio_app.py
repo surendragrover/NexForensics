@@ -177,6 +177,42 @@ class _QwenDisabled:  # p28: raw (not fine-tuned) Qwen 0.5B q2_k removed from al
 qwen_eng = _QwenDisabled()
 from engines.nli_engine import NLIEngine  # p28
 nli_eng = NLIEngine()
+
+def _p29_doc_text(files, max_pages=10):
+    """p29: full-page document text. PDF: pdftotext, scanned pages -> tesseract eng+hin
+    (journalist_research.extraction.pdf_text). Images: tesseract eng+hin.
+    TrOCR (single-line model) is used only as a last fallback."""
+    import subprocess, tempfile, os
+    from PIL import Image as _I
+    items = files if isinstance(files, list) else [files]
+    out = []
+    for f in items:
+        if f is None:
+            continue
+        try:
+            if isinstance(f, _I.Image):
+                tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False); f.convert("RGB").save(tmp.name); path = tmp.name
+            else:
+                path = str(getattr(f, "name", f))
+            if path.lower().endswith(".pdf"):
+                from journalist_research.extraction.pdf_text import extract_pdf_bytes
+                with open(path, "rb") as fh:
+                    t = extract_pdf_bytes(fh.read(), ocr=True).text
+            else:
+                r = subprocess.run(["nice", "-n", "10", "tesseract", path, "-", "-l", "eng+hin"],
+                                   capture_output=True, text=True, timeout=120)
+                t = r.stdout
+            t = (t or "").strip()
+            if not t and ocr_eng.ready:
+                t = ocr_eng.extract(path)
+            if t:
+                out.append(t)
+        except Exception as e:
+            log.error(f"p29 document text error for {f}: {e}")
+    txt = "\n".join(out).strip()
+    log.info(f"p29 document text: {len(txt)} chars from {len(items)} file(s)")
+    return txt
+
 cctv_eng = HFImageClassifierEngine("CCTV Crime Classifier", path=MODELS_DIR / "crime_cctv")
 deepfake_eng = HFImageClassifierEngine(
     "Deepfake Detector",
@@ -818,7 +854,7 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
     evidence_integrity["tampering_status"] = tampering_status
 
     # ── DOCUMENT EVIDENCE EXTRACTION (OCR) ──────────────────────────────
-    ocr_text = ocr_eng.extract(id_doc) if id_doc and ocr_eng.ready else ""
+    ocr_text = _p29_doc_text(id_doc) if id_doc else ""
     ocr_sc, ocr_res = (ocr_eng.score(ocr_text, suspect_name) if ocr_eng.ready else (0.0, {})) if ocr_text else (0.0, {})
     # p28: narrative-vs-document consistency (NLI v3); not part of any score
     try:
