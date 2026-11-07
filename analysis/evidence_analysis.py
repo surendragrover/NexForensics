@@ -343,12 +343,14 @@ def _analyze_facial_evidence(face_res, photo_meta):
 
 def _analyze_voice_evidence(vox_res, audio_meta):
     if not vox_res:
-        return {"status": "No voice evidence submitted", "findings": [], "risk_indicators": []}
+        return {"status": "NOT SUBMITTED - no voice clip uploaded; voice analysis did not run", "findings": [], "risk_indicators": []}
     findings = []
     risk_indicators = []
     top_speaker = vox_res.get("top_speaker", "Unknown")
     conf = vox_res.get("voice_match_conf", 0)
-    findings.append(f"Voice identified as: '{top_speaker}' (confidence: {conf:.1f}%)")
+    findings.append(f"Closest training-set speaker index: {top_speaker} (confidence {conf:.1f}%) - not an identity")
+    if vox_res.get("name_match_note"):
+        findings.append(f"Identity match: {vox_res['name_match_note']}")
     if vox_res.get("name_match") is True:
         findings.append("Voice matches claimed identity")
     elif vox_res.get("name_match") is False:

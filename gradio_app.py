@@ -735,21 +735,20 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
 
     # ── VOICE EVIDENCE ANALYSIS ─────────────────────────────────────────────
     vox_res = vox_eng.analyse(voice_clip) if voice_clip and vox_eng.ready else {}
-    vox_sc = vox_res.get("stress_score", ner_sc * 0.88) if vox_res else 0.0
-    if vox_res and suspect_name and suspect_name.strip():
-        recognized = (vox_res.get("top_speaker") or "").strip().lower()
-        claimed = suspect_name.strip().lower()
-        vox_res["name_match"] = (claimed in recognized) or (recognized in claimed) if recognized else None
-        if vox_res["name_match"] is False:
-            vox_sc = min(95.0, vox_sc + 25)
+    # p26: no voice score derived from NER; missing stress_score = 0
+    vox_sc = float(vox_res.get("stress_score") or 0.0) if vox_res else 0.0
+    # p26: the voice model returns a training-set speaker index, not an identity, so a
+    # name match is impossible; old code crashed on int.strip() and would add +25 stress.
+    if vox_res:
+        vox_res["name_match"] = None
+        vox_res["name_match_note"] = "NOT ASSESSED - voice model gives a training-set speaker index, not identity"
 
     # Qwen deception-cue fallback — ONLY when there's no actual voice
     # evidence to score against. Never overrides a real voice-stress score.
     if not voice_clip and qwen_deception.get("deception_score"):
         qwen_dec_score = qwen_deception.get("deception_score", 50)
-        if qwen_dec_score > 60:
-            vox_sc = max(vox_sc, qwen_dec_score * 0.7)
-            log.info(f"Qwen: deception cue used as voice-score fallback ({vox_sc:.1f}%)")
+        # p26: a text-based cue is never shown or scored as voice evidence
+        log.info(f"Qwen: text-based deception cue {qwen_dec_score} (not used as voice score)")
 
     # ── FACIAL EVIDENCE ANALYSIS ──────────────────────────────────────────
     face_res = face_eng.analyse(photo) if photo is not None and face_eng.ready else {}
@@ -1311,7 +1310,7 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
 
     indicators_html += (
         bar("Text Evidence Risk", ner_sc, "#60a5fa")
-        + bar("Voice Evidence Risk", vox_sc, "#ef4444")
+        + bar("Voice Evidence Risk", vox_sc if voice_clip else "NOT SUBMITTED", "#ef4444")
         + bar("Facial Evidence Risk", face_sc, "#f59e0b")
         + bar("Document Evidence Risk", ocr_sc, "#f472b6")
         + bar("Pattern Risk (heuristic, text)", pat_sc, "#a78bfa")
