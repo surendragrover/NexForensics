@@ -2896,7 +2896,6 @@ with gr.Blocks(theme=THEME, title="InvestigatorAI",
                     "— for face-match analysis</span></p>"
                     "<p style='font-size:11px;color:#f59e0b;margin:0 0 4px;'>"
                     "💡 Best result: only the face, front-facing, clear light, one person. "
-                    "सबसे अच्छे नतीजे के लिए सिर्फ़ चेहरा, सामने से, साफ़ रोशनी में। "
                     "(Face is auto-cropped for the deepfake check.)</p>")
             photo = gr.Image(label="📷 Face Photo (ArcFace)", type="pil",
                               height=180, sources=["upload"])

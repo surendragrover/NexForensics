@@ -788,6 +788,10 @@ class HFImageClassifierEngine:
 # ══════════════════════════════════════════════════════════════════════════════
 
 class QwenGGUFEngine:
+    # p25: llama-cpp is not thread-safe; concurrent calls on one Llama object crashed the
+    # service (SEGV 2026-11-07 18:14). One inference at a time, process-wide.
+    import threading as _threading
+    _infer_lock = _threading.Lock()
     """
     Qwen model in GGUF format — loaded via llama-cpp-python from
     models/qwen/model.gguf, as an ADDITIONAL reasoning layer alongside
@@ -835,7 +839,7 @@ class QwenGGUFEngine:
             self.model = Llama(
                 model_path=str(gguf_path),
                 n_ctx=4096,
-                n_threads=8,
+                n_threads=max(1, min(4, os.cpu_count() or 4)),
                 n_gpu_layers=n_gpu_layers,
                 verbose=False,
             )
@@ -851,22 +855,23 @@ class QwenGGUFEngine:
         if not self.ready or self.model is None:
             return None
         try:
-            response = self.model.create_chat_completion(
-                messages=[
-                    {"role": "system", "content": "You are an investigative assistant. Return valid JSON when requested."},
-                    {"role": "user", "content": prompt},
-                ],
-                max_tokens=max_tokens,
-                temperature=temperature,
-                # Small quantized GGUF models are especially prone to
-                # getting stuck repeating the same sentence/phrase —
-                # these three penalties push the sampler away from
-                # tokens/phrases it has already used in this response.
-                repeat_penalty=1.3,
-                frequency_penalty=0.4,
-                presence_penalty=0.3,
-                stop=["</s>", "```"],
-            )
+            with QwenGGUFEngine._infer_lock:
+                response = self.model.create_chat_completion(
+                    messages=[
+                        {"role": "system", "content": "You are an investigative assistant. Return valid JSON when requested."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    # Small quantized GGUF models are especially prone to
+                    # getting stuck repeating the same sentence/phrase —
+                    # these three penalties push the sampler away from
+                    # tokens/phrases it has already used in this response.
+                    repeat_penalty=1.3,
+                    frequency_penalty=0.4,
+                    presence_penalty=0.3,
+                    stop=["</s>", "```"],
+                )
             return response["choices"][0]["message"]["content"]
         except Exception as e:
             log.error(f"Qwen GGUF inference error: {e}")
