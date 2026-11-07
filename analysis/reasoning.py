@@ -98,13 +98,33 @@ def _build_reasoning_engine(case_id, modus, location, suspect_name, entities, oc
 
     # ---------------- HYPOTHESIS GENERATION ----------------
     if mo_links.get("linked_cases"):
+        # p23: linked_cases only holds links that passed the MO score threshold
+        # and are in the same crime category; confidence comes from the score.
         top = mo_links["linked_cases"][0]
+        try:
+            from analysis.report_rules import mo_confidence_from_score
+            _mo_conf = top.get("link_confidence") or mo_confidence_from_score(top.get("fingerprint_score", 0))
+        except Exception:
+            _mo_conf = "low"
         hypotheses.append({
             "hypothesis": f"This case may be connected to prior case {top.get('case_id','?')} ({top.get('crime_type','?')}) based on a matching MO signature",
-            "supporting_evidence": [f"MO Fingerprinting match: {(top.get('mo_description') or '')[:150]}"],
+            "supporting_evidence": [f"MO Fingerprinting match ({top.get('fingerprint_score', 0)}%): {(top.get('mo_description') or '')[:150]}"],
             "contradicting_evidence": ["No case_link has been confirmed by a human yet"] if not mo_links.get("confirmed_links") else [],
-            "confidence": "medium" if len(mo_links["linked_cases"]) == 1 else "medium-high",
+            "confidence": _mo_conf,
             "source": "crime_scenes (MO Fingerprinting)",
+        })
+    _variants = (watchlist or {}).get("possible_variant_matches") or []
+    if _variants:
+        _v0 = _variants[0]
+        hypotheses.append({
+            "hypothesis": (f"The suspect name '{suspect_name}' may be a spelling variant of dataset record "
+                           f"'{_v0.get('name')}' ({', '.join(sorted({v.get('dataset','?') for v in _variants}))[:80]}) "
+                           "- POSSIBLE match, identity not verified"),
+            "supporting_evidence": [f"{v.get('name')} [{v.get('dataset')}] - transliteration match {v.get('pairs_text','')}"
+                                    for v in _variants[:3]],
+            "contradicting_evidence": ["Spelling-variant name match only: no photo/DOB/ID cross-check; namesakes are possible"],
+            "confidence": "low-medium",
+            "source": "master_search_index (Indian-name spelling-variant matcher)",
         })
     strong_net = [m for m in (net_matches or []) if m.get("strength") == "strong"]
     if strong_net:
@@ -127,6 +147,7 @@ def _build_reasoning_engine(case_id, modus, location, suspect_name, entities, oc
     if not hypotheses:
         hypotheses.append({
             "hypothesis": "The evidence gathered so far does not link this case to any known pattern, entity, or prior case — it may be an isolated incident, or evidence collection is still too thin to tell",
+            "is_placeholder": True,
             "supporting_evidence": ["No dataset, network, or MO Fingerprinting matches were found"],
             "contradicting_evidence": [],
             "confidence": "low",
@@ -143,6 +164,8 @@ def _build_reasoning_engine(case_id, modus, location, suspect_name, entities, oc
         d_lines.append(f"The reported account of the incident: \"{_safe_truncate(modus.strip(), 300)}\" [Source: case intake].")
     if (location or "").strip():
         d_lines.append(f"The reported location is {location}. [Source: case intake]")
+    if not mo_links.get("linked_cases") and mo_links.get("suppressed_links"):
+        d_lines.append(f"No MO link found. {mo_links.get('note', '')} [Source: crime_scenes / MO Fingerprinting]")
     if mo_links.get("linked_cases"):
         d_lines.append(
             f"This case's MO signature resembles {len(mo_links['linked_cases'])} other case(s) on record, "
@@ -200,9 +223,21 @@ def _build_intelligence_summary(evidence_provided, crime_info, watchlist, mo_lin
 
     # ---- Next Evidence Recommendations (re-ranks Reasoning Engine gaps) ----
     next_evidence = []
-    for k, (label, priority, why) in _EVIDENCE_CHECKLIST_META.items():
-        if not evidence_provided.get(k):
-            next_evidence.append({"priority": priority, "recommendation": f"Obtain {label}", "reason": why})
+    # p23: crime-type aware list (financial cases ask for loan/bank/MCA/ED-CBI/court
+    # records, not voice/CCTV/vehicle). Falls back to the generic checklist.
+    _typed = None
+    try:
+        from analysis.report_rules import next_evidence_for
+        _typed = next_evidence_for(crime_info.get("crime_category", ""), crime_info.get("taxonomy_crimes", []),
+                                   evidence_provided)
+    except Exception:
+        _typed = None
+    if _typed:
+        next_evidence.extend(_typed)
+    else:
+        for k, (label, priority, why) in _EVIDENCE_CHECKLIST_META.items():
+            if not evidence_provided.get(k):
+                next_evidence.append({"priority": priority, "recommendation": f"Obtain {label}", "reason": why})
     if mo_links.get("linked_cases") and not mo_links.get("confirmed_links"):
         next_evidence.append({
             "priority": "Medium",
@@ -226,7 +261,12 @@ def _build_intelligence_summary(evidence_provided, crime_info, watchlist, mo_lin
     # of a flat "verify strength of match".
     _dm_count = (watchlist.get("dataset_matches", {}) or {}).get("count", 0)
     _match_conf = watchlist.get("match_confidence", "NONE")
-    if _dm_count:
+    if _dm_count and str(_match_conf).upper().startswith("POSSIBLE"):
+        known_match = (
+            f"POSSIBLE — {_dm_count} dataset record(s) match a spelling variant of the name. "
+            f"UNVERIFIED IDENTITY — name-only match; namesakes possible."
+        )
+    elif _dm_count:
         known_match = (
             f"Yes — {_dm_count} dataset record(s), name-match confidence {_match_conf}. "
             f"UNVERIFIED IDENTITY — no independent identity resolution confirms this "
@@ -257,22 +297,33 @@ def _build_intelligence_summary(evidence_provided, crime_info, watchlist, mo_lin
         found_bits.append(", ".join(crime_info["all_crimes"][:3]))
     if mo_links.get("linked_cases"):
         found_bits.append(f"{len(mo_links['linked_cases'])} MO-similar case(s)")
+    if (watchlist or {}).get("possible_variant_matches"):
+        found_bits.append(f"{len(watchlist['possible_variant_matches'])} POSSIBLE spelling-variant dataset record(s) (identity unverified)")
     if unidentified_leads.get("possible_leads"):
         found_bits.append(f"{len(unidentified_leads['possible_leads'])} unidentified-offender lead(s)")
     what_found = "; ".join(found_bits) if found_bits else "No dataset, network, or MO matches — evidence is currently self-contained"
 
     what_not_found = ", ".join(missing_evidence) if missing_evidence else "All core evidence types were provided"
 
-    if reasoning.get("hypotheses"):
-        top_h = max(reasoning["hypotheses"], key=lambda h: {"high": 3, "medium-high": 2.5, "medium": 2, "low-medium": 1.5, "low": 1}.get(str(h.get("confidence", "")).lower(), 0))
-        strongest_lead = f"{_safe_truncate(top_h.get('hypothesis', ''), 140)} (confidence: {top_h.get('confidence', 'N/A')})"
+    _real_h = [h for h in (reasoning.get("hypotheses") or []) if not h.get("is_placeholder")]
+    if _real_h:
+        top_h = max(_real_h, key=lambda h: {"high": 3, "medium-high": 2.5, "medium": 2, "low-medium": 1.5, "low": 1}.get(str(h.get("confidence", "")).lower(), 0))
+        strongest_lead = f"{_safe_truncate(top_h.get('hypothesis', ''), 160)} (confidence: {top_h.get('confidence', 'N/A')})"
     else:
         strongest_lead = "No hypothesis currently has supporting evidence"
+    if not mo_links.get("linked_cases") and (mo_links.get("suppressed_links") or not _real_h):
+        try:
+            from analysis.report_rules import mo_none_text
+            _none = mo_none_text()
+        except Exception:
+            _none = "No MO link found."
+        strongest_lead = (strongest_lead + ". " if _real_h else "") + _none
 
     weakest_link = (
         f"{len(reasoning.get('contradictions', []))} unresolved contradiction(s) in the evidence"
         if reasoning.get("contradictions")
-        else (f"{missing_evidence[0]} not yet collected" if missing_evidence else "No major weakness identified in evidence collected so far")
+        else (f"{next_evidence[0]['recommendation']} not yet on file" if _typed and next_evidence else
+              f"{missing_evidence[0]} not yet collected" if missing_evidence else "No major weakness identified in evidence collected so far")
     )
 
     next_step = next_evidence[0]["recommendation"] if next_evidence else "Proceed to human review — no further automatic leads to chase"
@@ -289,7 +340,7 @@ def _build_intelligence_summary(evidence_provided, crime_info, watchlist, mo_lin
         "completeness_pct": completeness_pct,
         "completeness_bar": completeness_bar,
         "missing_evidence": missing_evidence,
-        "next_evidence": next_evidence[:6],
+        "next_evidence": next_evidence[:8],
         "investigation_status": investigation_status,
         "summary_points": summary_points,
     }

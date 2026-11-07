@@ -630,6 +630,15 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
                 "Fill in at least one field to run analysis.",
                 _history_html(_req_email(request)), None)
 
+    # ── p23 (2026-11-07): Case ID + one IST clock for the whole report ──────
+    # A person name (or any value without a digit) is not a case reference:
+    # auto-generate NXF-YYYY-NNNN and keep the typed value as "user reference".
+    from analysis.report_rules import (resolve_case_id as _rr_case_id, now_ist as _rr_now, fmt_ist as _rr_fmt,
+                                       intake_timeline as _rr_timeline, risk_display as _rr_risk_display,
+                                       risk_band as _rr_risk_band)
+    _t0 = _rr_now()
+    case_id, case_user_ref, case_id_note = _rr_case_id(case_id, suspect_name, _t0)
+
     # ── EVIDENCE COLLECTION & INTEGRITY ─────────────────────────────────────
     photo_hash = "N/A"
     if photo is not None:
@@ -659,7 +668,7 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         "audio_metadata": audio_meta,
         "document_metadata": doc_meta,
         "tampering_status": "N/A — Deepfake/tamper detection module offline",
-        "chain_of_custody": f"Evidence logged at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC",
+        "chain_of_custody": f"Evidence logged at {_rr_fmt(_t0)}",
     }
 
     # ── TEXT EVIDENCE EXTRACTION (NER) ──────────────────────────────────────
@@ -744,7 +753,11 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
 
     # ── FACIAL EVIDENCE ANALYSIS ──────────────────────────────────────────
     face_res = face_eng.analyse(photo) if photo is not None and face_eng.ready else {}
-    face_sc = face_res.get("anomaly_score", ner_sc * 0.82) if face_res else 0.0
+    # p23: ArcFace "anomaly" was (1 - embedding_norm/25): not evidence of disguise or
+    # deepfake. It no longer feeds deception, pattern risk or identity fraud.
+    face_sc = 0.0
+    if face_res:
+        face_res["anomaly_note"] = "embedding-norm technical metric, non-evidentiary (not used in any score)"
 
     # ── CCTV CRIME-SCENE CLASSIFICATION (video frame, or fallback to photo) ─
     cctv_frame = _extract_video_frame(cctv_video) if cctv_video else None
@@ -792,7 +805,8 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
     ocr_sc, ocr_res = (ocr_eng.score(ocr_text, suspect_name) if ocr_eng.ready else (0.0, {})) if ocr_text else (0.0, {})
 
     # ── CRIME CLASSIFICATION FROM EVIDENCE ────────────────────────────────
-    crime_info = _classify_crime_from_evidence(entities, modus, suspect_name, ocr_text, face_res, vox_res, location)
+    crime_info = _classify_crime_from_evidence(entities, modus, suspect_name, ocr_text, face_res, vox_res, location,
+                                               incident_date=incident_date, crime_category=crime_category)
 
     # ── EVIDENCE ANALYSIS (Model names replaced with evidence focus) ──────
     text_evidence = _analyze_text_evidence(entities, modus, suspect_name, location)
@@ -933,7 +947,13 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
 
     # ── WATCHLIST-BASED CRIME OVERRIDE (for known fugitives/criminals) ─────
     # If watchlist has serious criminal data, override the text-based classification
-    if watchlist.get("charges") and watchlist.get("charges", ["N/A"])[0] != "N/A":
+    _wl_possible_only = str(watchlist.get("match_confidence", "")).upper().startswith("POSSIBLE")
+    if _wl_possible_only:
+        # p23: a spelling-variant (POSSIBLE) dataset hit never overrides the
+        # crime classification; it is listed as an unverified record only.
+        for _c in [c for c in (watchlist.get("charges") or []) if c and c != "N/A"][:3]:
+            crime_info["evidence_found"].append(f"Dataset record (POSSIBLE spelling-variant name match, identity unverified): {_c}")
+    elif watchlist.get("charges") and watchlist.get("charges", ["N/A"])[0] != "N/A":
         crime_info["primary"] = watchlist["charges"][0] if watchlist["charges"] else crime_info["primary"]
         if len(watchlist.get("charges", [])) > 1:
             crime_info["secondary"] = ", ".join(watchlist["charges"][1:3])
@@ -943,18 +963,18 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         if watchlist.get("enforcement_actions") and watchlist["enforcement_actions"][0] != "N/A":
             crime_info["evidence_found"].extend(watchlist["enforcement_actions"][:3])
 
-    if watchlist.get("status", "").startswith("FUGITIVE"):
+    if watchlist.get("status", "").startswith("FUGITIVE") and not _wl_possible_only:
         crime_info["severity"] = "Critical"
         crime_info["primary"] = f"FUGITIVE — {crime_info['primary']}"
         if "Absconding" not in crime_info["evidence_found"]:
             crime_info["evidence_found"].append(f"Subject absconding since {watchlist.get('status', '').split('since')[-1].strip() if 'since' in watchlist.get('status', '') else 'unknown date'}")
 
-    if watchlist.get("interpol") and "YES" in watchlist.get("interpol", "NO"):
+    if watchlist.get("interpol") and "YES" in watchlist.get("interpol", "NO") and not _wl_possible_only:
         crime_info["severity"] = "Critical"
         if "Interpol Red Corner Notice" not in crime_info["evidence_found"]:
             crime_info["evidence_found"].append("Interpol Red Corner Notice active")
 
-    if watchlist.get("sanctions") and "YES" in watchlist.get("sanctions", "NO"):
+    if watchlist.get("sanctions") and "YES" in watchlist.get("sanctions", "NO") and not _wl_possible_only:
         crime_info["severity"] = "Critical"
         if "International sanctions-list match" not in crime_info["evidence_found"]:
             crime_info["evidence_found"].append("International sanctions-list match (e.g. UN Security Council)")
@@ -1050,6 +1070,12 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         priority_boost = 5   # +5% for Medium cases
     
     risk = round(min(base_risk + priority_boost, 99), 1)
+    # p23: the XGBoost file on this server (models/risk_model/risk_model.json) is an
+    # offshore-company model (features company_type, jurisdiction, country_codes,
+    # sourceID, service_provider, company_age, is_tax_haven, is_sanctioned) — not a
+    # case model — so it is refused and risk is a heuristic. Shown as a band only.
+    risk_is_heuristic = (pat_src != "xgboost")
+    crime_info["_risk_heuristic"] = risk_is_heuristic
     
     # Store risk breakdown for explainability
     risk_breakdown = {
@@ -1156,7 +1182,19 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
     # "POTENTIAL SANCTIONS NAME-MATCH — IDENTITY UNVERIFIED" — the
     # sanctions/wanted/fugitive/interpol claim is not the noun anymore,
     # "name-match" is.
-    if watchlist.get("status", "").startswith("FUGITIVE") or watchlist.get("status", "").startswith("DECEASED"):
+    _possible_bump = True
+    if _wl_possible_only and (
+            (watchlist.get("charges") and watchlist["charges"][0] != "N/A")
+            or "YES" in str(watchlist.get("sanctions", "")) or "YES" in str(watchlist.get("pep_status", ""))):
+        _vm = (watchlist.get("possible_variant_matches") or [{}])[0]
+        v_icon, v_color, v_label = "🟠", "#f97316", "POSSIBLE NAME-MATCH (SPELLING VARIANT) — IDENTITY UNVERIFIED"
+        v_text = (f"'{suspect_name}' is a spelling variant of dataset record '{_vm.get('name', '?')}' "
+                  f"({', '.join(sorted({m.get('dataset', '?') for m in watchlist.get('possible_variant_matches') or []}))}). "
+                  "This is a POSSIBLE match on name only, never a confirmed identification: identity confidence stays at 0% "
+                  "until photo, date of birth, parentage or ID documents are cross-checked. Namesakes are possible.")
+        watchlist_override = True
+        _possible_bump = False
+    elif watchlist.get("status", "").startswith("FUGITIVE") or watchlist.get("status", "").startswith("DECEASED"):
         v_icon, v_color, v_label = "🔴", "#ef4444", "POTENTIAL FUGITIVE NAME-MATCH — IDENTITY UNVERIFIED"
         v_text = (f"A dataset record matching this name is {watchlist.get('status', 'UNKNOWN').split('—')[0].strip()}. "
                   f"IDENTITY CONFIDENCE IS 0% — independent identity resolution has NOT confirmed this record "
@@ -1225,9 +1263,10 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
                   "consistent: check evidence coverage and the structured contradiction check.")
 
     # If watchlist override, also bump deception/risk scores for reporting
-    if watchlist_override:
+    if watchlist_override and _possible_bump:
         deception = max(deception, 85.0)
         risk = max(risk, 88.0)
+    risk_disp = _rr_risk_display(risk, not risk_is_heuristic, crime_info.get("severity"))
 
     # ── BUILD UI HTML (Evidence-Focused) ──────────────────────────────────
     def bar(label, val, col, width=100):
@@ -1267,9 +1306,9 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         + "<div style='margin-top:14px;border-top:0.5px solid #1a2236;padding-top:12px;'>"
         + "<p style='font-size:10px;color:#475569;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;'>Fraud & Crime Indicators</p>"
         + bar("Document Forgery Risk", fraud_indicators["document_forgery"], "#f87171")
-        + (bar("Identity Fraud Risk", fraud_indicators["identity_fraud"], "#fb923c") if (evidence_provided["photo"] or evidence_provided["voice"] or evidence_provided["document"]) else
+        + (bar("Identity Fraud Risk", fraud_indicators["identity_fraud"], "#fb923c") if (evidence_provided["voice"] or evidence_provided["document"]) else
            "<div style='font-size:11px;color:#64748b;margin:6px 0;'>Identity Fraud Risk: "
-           "<span style='color:#e2e8f0;'>N/A (no identity evidence submitted)</span></div>")
+           "<span style='color:#e2e8f0;'>NOT ASSESSED (needs voice or ID document; a photo alone has no reference to compare)</span></div>")
         + bar("Financial Anomaly Risk", fraud_indicators["financial_anomaly"], "#a78bfa")
         + bar("Criminal Pattern Match", fraud_indicators["mo_match"], "#22d3ee")
         + "</div>"
@@ -1332,7 +1371,7 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         f"<div style='font-size:12px;color:#e2e8f0;font-weight:600;'>Primary: {crime_info['primary']}</div>"
         f"<div style='font-size:11px;color:#94a3b8;'>Secondary: {crime_info['secondary']}</div>"
         f"<div style='font-size:11px;color:#94a3b8;'>Severity: <span style='color:{ '#ef4444' if crime_info['severity']=='Critical' else '#f59e0b' if crime_info['severity']=='High' else '#22c55e' };'>{crime_info['severity']}</span></div>"
-        f"<div style='font-size:10px;color:#475569;margin-top:4px;'>Potential Applicable Law (AI-suggested — not backend-verified): {crime_info['statutes']}</div>"
+        f"<div style='font-size:10px;color:#475569;margin-top:4px;'>Potential Applicable Law ({crime_info.get('law_label', 'AI-suggested, not verified')}): {crime_info['statutes']}</div>"
         "</div>"
     )
 
@@ -1353,7 +1392,7 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         f"<div style='font-size:11px;color:#64748b;'>Physical: <span style='color:#e2e8f0;'>{threat['physical']}</span></div>"
         f"<div style='font-size:11px;color:#64748b;'>Financial: <span style='color:#e2e8f0;'>{threat['financial']}</span></div>"
         f"<div style='font-size:11px;color:#64748b;'>Public Safety: <span style='color:#e2e8f0;'>{threat['public_safety']}</span></div>"
-        f"<div style='font-size:11px;color:#64748b;'>Escalation: <span style='color:#e2e8f0;'>{threat['escalation_prob']:.1f}%</span></div>"
+        f"<div style='font-size:11px;color:#64748b;'>Escalation: <span style='color:#e2e8f0;'>{threat.get('escalation_display', 'NOT ASSESSED')}</span></div>"
         "</div>"
     )
 
@@ -1361,8 +1400,8 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
 
     # ── Save history & graph ────────────────────────────────────────────────
     entry = {
-        "case_id": case_id or f"NXF-{random.randint(1000,9999)}",
-        "date": datetime.now().strftime("%d %b %Y %H:%M"),
+        "case_id": case_id,
+        "date": _t0.strftime("%d %b %Y %H:%M") + " IST",
         "deception": deception, "risk": risk, "credibility": credibility,
         "pattern": pat_sc, "voice": vox_sc, "ner": ner_sc, "ocr": ocr_sc,
     }
@@ -1375,13 +1414,15 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
     graph_html = build_graphs_html(scores_for_graph, list(reversed(analysis_history[-10:])))
 
     # ── BUILD TEXT REPORT (Evidence-Focused) ──────────────────────────────
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ts = _rr_fmt(_t0)
     lines = [
         "="*70,
         "  NEXFORENSICS — INVESTIGATION INTELLIGENCE REPORT",
         "  nexforensics.com  |  Signal to Evidence  |  CONFIDENTIAL",
         "="*70,
         f"  Case ID         : {entry['case_id']}",
+        *([f"  User Reference  : {case_user_ref}  ({case_id_note})"] if case_user_ref else
+          ([f"  Case ID note    : {case_id_note}"] if case_id_note else [])),
         f"  Case Title      : {case_title or 'N/A'}",
         f"  Crime Category  : {crime_category or 'N/A'}",
         f"  Case Priority   : {case_priority or 'Medium'}",
@@ -1421,8 +1462,9 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         f"    Severity         : {crime_info['severity']}",
         f"    Jurisdiction     : {crime_info['jurisdiction']}",
         f"    Potential Applicable Law : {crime_info['statutes']}",
-        f"                       (AI-suggested from keyword match — NOT backend-verified;",
-        f"                        confirm against actual jurisdiction/counsel before citing)",
+        f"                       ({crime_info.get('law_label', 'AI-suggested, NOT verified')})",
+        *([f"    Code applied     : {crime_info['law'].get('date_note')}"] if (crime_info.get('law') or {}).get('date_note') else []),
+        *([f"    IPC-BNS mapping  : {crime_info['law'].get('source')}"] if (crime_info.get('law') or {}).get('source') else []),
         "-"*70,
         "  EVIDENCE FOUND",
     ]
@@ -1435,7 +1477,7 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         f"    Deception Score  : {f'{deception}%' if voice_clip else 'N/A — narrative text only'} (linguistic pattern on the case-narrative TEXT — investigator/",
         f"                        case-intake writing, not a subject statement — not the subject's truthfulness)",
         f"    Narrative Credibility : {f'{credibility}%' if voice_clip else 'N/A — narrative text only'} (direct inverse of Deception Score above — same scope)",
-        f"    Risk Level       : {risk}%",
+        f"    Risk Level       : {risk_disp}",
         f"    Analysis Engine Coverage : {active_models}/5 AI modules loaded on this server (infrastructure —",
         f"                               same for every case, NOT evidence for this case)",
         f"    Evidence-Type Coverage   : {intel_summary['completeness_pct']}% (evidence types actually submitted",
@@ -1443,7 +1485,7 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         "-"*70,
         "  FRAUD & CRIME INDICATORS (Evidence-Based)",
         f"    Document Forgery   : {fraud_indicators['document_forgery']:.1f}%",
-        f"    Identity Fraud     : {(format(fraud_indicators['identity_fraud'], '.1f') + '%') if (evidence_provided["photo"] or evidence_provided["voice"] or evidence_provided["document"]) else 'N/A (no identity evidence submitted)'}",
+        f"    Identity Fraud     : {(format(fraud_indicators['identity_fraud'], '.1f') + '%') if (evidence_provided["voice"] or evidence_provided["document"]) else 'NOT ASSESSED (needs voice or ID document; a photo alone has no reference to compare)'}",
         f"    Financial Anomaly  : {fraud_indicators['financial_anomaly']:.1f}%",
         f"    Criminal Pattern   : {fraud_indicators['mo_match']:.1f}%",
         "    Behavioral Flags   :",
@@ -1468,8 +1510,9 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
     if face_evidence.get("status") == "Evidence analyzed":
         for finding in face_evidence.get("findings", []):
             lines.append(f"    * {finding}")
-        for risk in face_evidence.get("risk_indicators", []):
-            lines.append(f"    ! {risk}")
+        lines.append(f"    * Deepfake / tamper check: {evidence_integrity.get('tampering_status', 'N/A')}")
+        for _ri in face_evidence.get("risk_indicators", []):   # p23: was `for risk in`, which overwrote the risk score
+            lines.append(f"    ! {_ri}")
     else:
         lines.append(f"    {face_evidence.get('status', 'N/A')}")
 
@@ -1477,8 +1520,8 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
     if voice_evidence.get("status") == "Evidence analyzed":
         for finding in voice_evidence.get("findings", []):
             lines.append(f"    * {finding}")
-        for risk in voice_evidence.get("risk_indicators", []):
-            lines.append(f"    ! {risk}")
+        for _ri in voice_evidence.get("risk_indicators", []):   # p23: was `for risk in`, which overwrote the risk score
+            lines.append(f"    ! {_ri}")
     else:
         lines.append(f"    {voice_evidence.get('status', 'N/A')}")
 
@@ -1486,15 +1529,17 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
     if doc_evidence.get("status") == "Evidence analyzed":
         for finding in doc_evidence.get("findings", []):
             lines.append(f"    * {finding}")
-        for risk in doc_evidence.get("risk_indicators", []):
-            lines.append(f"    ! {risk}")
+        for _ri in doc_evidence.get("risk_indicators", []):   # p23: was `for risk in`, which overwrote the risk score
+            lines.append(f"    ! {_ri}")
         if doc_evidence.get("extracted_text"):
             lines.append(f'    Extracted: "{doc_evidence["extracted_text"][:100]}..."')
     else:
         lines.append(f"    {doc_evidence.get('status', 'N/A')}")
 
     dm = watchlist.get("dataset_matches", {"count": 0, "datasets": {}})
-    dm_line = (f"{dm['count']} record(s) across: " + ", ".join(f"{k}({v})" for k, v in dm["datasets"].items())
+    _is_possible = str(watchlist.get("match_confidence", "")).upper().startswith("POSSIBLE")
+    dm_line = ((("POSSIBLE (spelling variant, verify identity): " if _is_possible else "")
+                + f"{dm['count']} record(s) across: " + ", ".join(f"{k}({v})" for k, v in dm["datasets"].items()))
                if dm.get("count") else "No matches found")
     conf = watchlist.get("match_confidence", "NONE")
     weak = watchlist.get("weak_matches_for_review", [])
@@ -1505,6 +1550,7 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         "  ⚠ IDENTITY NOT INDEPENDENTLY VERIFIED (Identity Confidence: 0%) — every field below is a",
         "    NAME/ALIAS MATCH against a dataset, not a confirmed hit on this specific individual.",
         f"    Match Confidence : {conf}",
+        f"    Identity Confidence : {watchlist.get('identity_confidence', '0% (not established)')}",
         f"    Database Match   : {dm_line}",
         f"    Criminal History : {_honest_negative(watchlist['criminal_history'])}",
         f"    Known Aliases    : {', '.join(watchlist.get('aliases', ['N/A'])[:3])} (names from same dataset search — may be different individuals, not verified as one person)",
@@ -1516,6 +1562,10 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         f"    FBI Watchlist    : {_fbi_display_for(location, watchlist.get('fbi_watchlist', 'N/A'))}",
         f"    Subject Status   : {watchlist.get('status', 'UNKNOWN')}",
     ]
+    if watchlist.get("possible_variant_matches"):
+        lines.append("    POSSIBLE matches (Indian-name spelling variant — never CONFIRMED; verify identity):")
+        for _m in watchlist["possible_variant_matches"][:6]:
+            lines.append(f"      ? [{_m.get('dataset')}] {_m.get('name')} ({_m.get('type')}) — variant {_m.get('pairs_text') or 'n/a'}; {_m.get('detail', '')[:140]}")
     if weak:
         lines.append("    Weak Matches (name-fragment only, NOT used above — verify manually):")
         for w in weak[:5]:
@@ -1583,7 +1633,7 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
                 )
                 lines.append(
                     f"          MO Fingerprint Score: {c.get('fingerprint_score', 0)}% "
-                    f"({c.get('fingerprint_match_level', 'LOW')})"
+                    f"({c.get('fingerprint_match_level', 'LOW')}) — link confidence: {c.get('link_confidence', 'n/a')}"
                 )
                 lines.append(
                     f"          Entry: {c.get('entry_method') or 'Not recorded'} | "
@@ -1596,6 +1646,12 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
                     f"MO signature: {c.get('mo_signature') or 'Not recorded'} | "
                     f"Confidence: {c.get('profile_confidence') if c.get('profile_confidence') is not None else 'Not recorded'}"
                 )
+        if not mo_links.get("linked_cases"):
+            lines.append("    Result           : No MO link found (no candidate reached the score threshold in the same crime category).")
+        if mo_links.get("suppressed_links"):
+            lines.append(f"    Suppressed (not used as leads): {len(mo_links['suppressed_links'])}")
+            for c in mo_links["suppressed_links"][:3]:
+                lines.append(f"      x Case {c.get('case_id','?')} [{c.get('crime_type','?')}] — {c.get('suppressed_reason','')}")
         if mo_links.get("confirmed_links"):
             lines.append("    Confirmed Links on Record:")
             for cl in mo_links["confirmed_links"][:6]:
@@ -1657,11 +1713,13 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
     else:
         lines.append("    None — all core evidence types have been collected.")
 
-    timeline_events = _extract_timeline(modus, incident_date)
-    lines += ["-"*70, "  INVESTIGATION TIMELINE (AI-extracted from narrative — verify against records)"]
+    # p23: intake incident date is the first event (labelled as reported at
+    # intake), then dated statements from the narrative, then clock times.
+    timeline_events = _rr_timeline(incident_date, modus, _extract_timeline(modus, incident_date))
+    lines += ["-"*70, "  INVESTIGATION TIMELINE (intake date + AI-extracted from narrative — verify against records)"]
     if timeline_events:
         for ev in timeline_events:
-            lines.append(f"    {ev.get('time', '?'):<16} → {ev.get('event', '')}")
+            lines.append(f"    {str(ev.get('time', '?')):<16} → {ev.get('event', '')}  [{ev.get('source', 'narrative')}]")
     else:
         lines.append("    No time-stamped events could be extracted from the narrative.")
 
@@ -1670,14 +1728,17 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         "  THREAT ASSESSMENT MATRIX",
         f"    Physical Threat    : {threat['physical']}",
         f"    Financial Threat   : {threat['financial']}",
+        f"        Basis          : {(threat.get('basis') or {}).get('financial', 'n/a')}",
         f"    Cyber Threat       : {threat['cyber']}",
+        f"        Basis          : {(threat.get('basis') or {}).get('cyber', 'n/a')}",
         f"    Public Safety Risk : {threat['public_safety']}",
-        f"    Escalation Prob.   : {threat['escalation_prob']:.1f}%",
+        f"    Escalation Prob.   : {threat.get('escalation_display', 'NOT ASSESSED')}",
+        f"        Basis          : {(threat.get('basis') or {}).get('escalation', 'n/a')}",
         "-"*70,
         "  EVIDENCE INTEGRITY",
-        f"    Photo Hash       : {evidence_integrity['photo_hash'][:30]}..." if len(str(evidence_integrity['photo_hash'])) > 30 else f"    Photo Hash       : {evidence_integrity['photo_hash']}",
-        f"    Audio Hash       : {evidence_integrity['audio_hash'][:30]}..." if len(str(evidence_integrity['audio_hash'])) > 30 else f"    Audio Hash       : {evidence_integrity['audio_hash']}",
-        f"    Document Hash    : {evidence_integrity['doc_hash'][:30]}..." if len(str(evidence_integrity['doc_hash'])) > 30 else f"    Document Hash    : {evidence_integrity['doc_hash']}",
+        f"    Photo SHA-256    : {evidence_integrity['photo_hash']}",
+        f"    Audio SHA-256    : {evidence_integrity['audio_hash']}",
+        f"    Document SHA-256 : {evidence_integrity['doc_hash']}",
         f"    Chain of Custody : {evidence_integrity['chain_of_custody']}",
         f"    Tampering Check  : {evidence_integrity['tampering_status']}",
         "-"*70,
@@ -1746,6 +1807,15 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         # whatever rare upstream path was producing a non-numeric value.
         "risk": float(risk) if isinstance(risk, (int, float)) else 0.0,
         "risk_breakdown": risk_breakdown,
+        # p23
+        "risk_is_heuristic": risk_is_heuristic,
+        "risk_display": risk_disp,
+        "risk_band": _rr_risk_band(risk),
+        "case_user_reference": case_user_ref or "",
+        "case_id_note": case_id_note,
+        "crime_law": crime_info.get("law", {}),
+        "crime_law_label": crime_info.get("law_label", ""),
+        "crime_country": crime_info.get("country", {}),
         "confidence_level": confidence_level, "active_models": active_models,
         "v_label": v_label, "v_color": v_color, "v_text": v_text, "v_icon": v_icon,
         "crime_primary": crime_info["primary"],
@@ -2343,10 +2413,10 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
                 lines.append(f"    {_r['date']} ({_r['raw']}){_amb}  [{_r['kind']}]  {_r['text'][:140]}")
         else:
             lines.append("    No dated statement found.")
-        _india = "india" in f" {location or ''} ".lower()
+        _india = ("india" in f" {location or ''} ".lower()) or bool(crime_info.get("is_indian_jurisdiction"))
         _ck = [("Sanctions / PEP (local watchlist datasets)", "SEARCHED", "see Background & Watchlist")]
         if _india:
-            _ck += [("SEBI orders", "NOT ASSESSED", "run the Deep OSINT (DOA) tab: local SEBI order corpus"),
+            _ck += [("SEBI orders", "NOT ASSESSED", f"run the Deep OSINT (DOA) tab for '{suspect_name or 'the subject'}': local SEBI order corpus"),
                     ("MCA director / company records", "NOT ASSESSED", "captcha-gated: manual check"),
                     ("eCourts case status", "NOT ASSESSED", "captcha-gated: manual check"),
                     ("CIBIL / RBI wilful-defaulter lists", "NOT ASSESSED", "no free public API: manual check"),
@@ -2375,7 +2445,7 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
     return (
         f"{deception}%" if voice_clip else "N/A — Narrative text only",
         f"{credibility}%" if voice_clip else "N/A — Narrative text only",
-        f"{risk}%",
+        risk_disp,
         f"{pat_sc:.1f}%  [{pat_src}]",
         f"{net_risk:.1f}%",
         f"{fin_risk:.1f}%",

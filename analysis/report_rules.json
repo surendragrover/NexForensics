@@ -1,0 +1,572 @@
+{
+  "version": "1.0.0",
+  "created": "2026-11-07",
+  "note": "p23 report rules for the main investigation report (gradio_app.run_analysis + PDF). Edit values here; code reads them at import. Every law suggestion stays 'AI-suggested, not verified'.",
+  "mo_links": {
+    "min_fingerprint_score": 40,
+    "require_same_category": true,
+    "confidence_bands": [
+      [
+        75,
+        "high"
+      ],
+      [
+        55,
+        "medium"
+      ],
+      [
+        40,
+        "low-medium"
+      ]
+    ],
+    "none_text": "No MO link found: no prior case reached the {min}% MO fingerprint threshold in the same crime category."
+  },
+  "name_matching": {
+    "note": "Indian-name transliteration variants. Used only to add a POSSIBLE tier (spelling variant, verify identity). Never CONFIRMED.",
+    "digraph_map": [
+      [
+        "ph",
+        "f"
+      ],
+      [
+        "sh",
+        "s"
+      ],
+      [
+        "th",
+        "t"
+      ],
+      [
+        "dh",
+        "d"
+      ],
+      [
+        "bh",
+        "b"
+      ],
+      [
+        "kh",
+        "k"
+      ],
+      [
+        "gh",
+        "g"
+      ],
+      [
+        "jh",
+        "j"
+      ],
+      [
+        "ck",
+        "k"
+      ],
+      [
+        "q",
+        "k"
+      ],
+      [
+        "w",
+        "v"
+      ],
+      [
+        "z",
+        "j"
+      ],
+      [
+        "x",
+        "ks"
+      ]
+    ],
+    "vowel_map": [
+      [
+        "aa",
+        "a"
+      ],
+      [
+        "ee",
+        "i"
+      ],
+      [
+        "ii",
+        "i"
+      ],
+      [
+        "oo",
+        "u"
+      ],
+      [
+        "uu",
+        "u"
+      ],
+      [
+        "ou",
+        "u"
+      ],
+      [
+        "iya",
+        "ya"
+      ],
+      [
+        "ia",
+        "ya"
+      ],
+      [
+        "ai",
+        "ay"
+      ],
+      [
+        "ey",
+        "ay"
+      ],
+      [
+        "ei",
+        "ay"
+      ]
+    ],
+    "min_token_similarity": 0.84,
+    "max_extra_candidate_tokens": 1,
+    "tier_label": "POSSIBLE (spelling variant, verify identity)",
+    "identity_confidence_cap": "0% (spelling-variant name match only; not an identity finding)"
+  },
+  "country_detection": {
+    "IN": {
+      "label": "India",
+      "markers": [
+        "india",
+        "indian",
+        "delhi",
+        "mumbai",
+        "bengaluru",
+        "bangalore",
+        "chennai",
+        "kolkata",
+        "hyderabad",
+        "pune",
+        "ahmedabad",
+        "gujarat",
+        "haryana",
+        "uttar pradesh",
+        "maharashtra",
+        "rajasthan",
+        "punjab",
+        "karnataka",
+        "tamil nadu",
+        "kerala",
+        "west bengal",
+        "bihar",
+        "madhya pradesh",
+        "telangana",
+        "andhra pradesh",
+        "odisha",
+        "assam",
+        "jharkhand",
+        "chandigarh",
+        "noida",
+        "gurugram",
+        "gurgaon",
+        "jaipur",
+        "lucknow",
+        "dehradun"
+      ],
+      "strong_markers": [
+        "enforcement directorate",
+        "central bureau of investigation",
+        "pmla",
+        "prevention of money laundering act",
+        "ipc",
+        "bns",
+        "bharatiya nyaya sanhita",
+        "indian penal code",
+        "fema",
+        "sebi",
+        "rbi",
+        "reserve bank of india",
+        "sfio",
+        "eow",
+        "nclt",
+        "drt",
+        "crore",
+        "lakh",
+        "inr",
+        "₹",
+        "state bank of india",
+        "sbi",
+        "punjab national bank",
+        "pnb",
+        "idbi",
+        "bank of baroda",
+        "canara bank",
+        "union bank of india",
+        "lookout circular",
+        "fir",
+        "firs",
+        "chargesheet"
+      ],
+      "case_sensitive_markers": [
+        "ED",
+        "CBI",
+        "NIA",
+        "DRI",
+        "SFIO",
+        "EOW",
+        "PMLA",
+        "IPC",
+        "BNS",
+        "FEMA",
+        "SEBI",
+        "RBI",
+        "INR",
+        "Rs",
+        "Rs."
+      ],
+      "min_hits": 2
+    }
+  },
+  "crime_taxonomy": {
+    "note": "Crime TYPES only. A company, brand or person name is never a crime type or crime evidence. 'ipc'/'bns' are section numbers verified against NCRB IPC-BNS table (https://www.ncrb.mha.gov.in/uploads/SankalanPortal/SectionTableBNS.html, fetched 2026-11-07).",
+    "entries": [
+      {
+        "crime": "Bank Fraud",
+        "severity": "High",
+        "keywords": [
+          "bank fraud",
+          "loan fraud",
+          "fraud on banks",
+          "cheating banks",
+          "bank loan fraud"
+        ],
+        "ipc": [
+          "420"
+        ],
+        "special": []
+      },
+      {
+        "crime": "Cheating",
+        "severity": "High",
+        "keywords": [
+          "cheating",
+          "cheated",
+          "dishonestly induced",
+          "dishonest inducement"
+        ],
+        "ipc": [
+          "420"
+        ],
+        "special": []
+      },
+      {
+        "crime": "Criminal Conspiracy",
+        "severity": "High",
+        "keywords": [
+          "criminal conspiracy",
+          "conspiracy",
+          "conspired"
+        ],
+        "ipc": [
+          "120B"
+        ],
+        "special": []
+      },
+      {
+        "crime": "Criminal Breach of Trust",
+        "severity": "High",
+        "keywords": [
+          "criminal breach of trust",
+          "breach of trust",
+          "misappropriation",
+          "misappropriated"
+        ],
+        "ipc": [
+          "406"
+        ],
+        "special": []
+      },
+      {
+        "crime": "Diversion / Siphoning of Funds",
+        "severity": "High",
+        "keywords": [
+          "diversion of funds",
+          "fund diversion",
+          "diverted funds",
+          "diversion/siphoning",
+          "siphoning",
+          "siphoned",
+          "diversion of loan funds"
+        ],
+        "ipc": [
+          "406"
+        ],
+        "special": []
+      },
+      {
+        "crime": "Money Laundering",
+        "severity": "High",
+        "keywords": [
+          "money laundering",
+          "money-laundering",
+          "laundering",
+          "pmla",
+          "proceeds of crime",
+          "hawala"
+        ],
+        "ipc": [],
+        "special": [
+          "PMLA 2002 s.3/s.4"
+        ]
+      },
+      {
+        "crime": "Wilful Default",
+        "severity": "Medium",
+        "keywords": [
+          "wilful default",
+          "wilful defaulter",
+          "willful defaulter",
+          "willful default"
+        ],
+        "ipc": [],
+        "special": [
+          "RBI Master Direction on wilful defaulters (civil/regulatory)"
+        ]
+      },
+      {
+        "crime": "Fugitive Economic Offence",
+        "severity": "High",
+        "keywords": [
+          "fugitive economic offender",
+          "feo act"
+        ],
+        "ipc": [],
+        "special": [
+          "Fugitive Economic Offenders Act 2018"
+        ]
+      },
+      {
+        "crime": "Forgery",
+        "severity": "High",
+        "keywords": [
+          "forgery",
+          "forged",
+          "fabricated documents"
+        ],
+        "ipc": [
+          "467",
+          "468",
+          "471"
+        ],
+        "special": []
+      },
+      {
+        "crime": "Embezzlement",
+        "severity": "High",
+        "keywords": [
+          "embezzlement",
+          "embezzled"
+        ],
+        "ipc": [
+          "409"
+        ],
+        "special": []
+      },
+      {
+        "crime": "Bribery / Corruption",
+        "severity": "High",
+        "keywords": [
+          "bribery",
+          "bribe",
+          "kickback",
+          "corruption"
+        ],
+        "ipc": [],
+        "special": [
+          "Prevention of Corruption Act 1988"
+        ]
+      },
+      {
+        "crime": "Foreign Exchange Violation",
+        "severity": "Medium",
+        "keywords": [
+          "fema",
+          "foreign exchange violation"
+        ],
+        "ipc": [],
+        "special": [
+          "FEMA 1999 (civil)"
+        ]
+      },
+      {
+        "crime": "Securities Fraud",
+        "severity": "High",
+        "keywords": [
+          "insider trading",
+          "market manipulation",
+          "securities fraud",
+          "front running"
+        ],
+        "ipc": [],
+        "special": [
+          "SEBI Act 1992 s.12A/s.24"
+        ]
+      },
+      {
+        "crime": "Tax Evasion",
+        "severity": "High",
+        "keywords": [
+          "tax evasion"
+        ],
+        "ipc": [],
+        "special": [
+          "Income-tax Act 1961 s.276C"
+        ]
+      }
+    ],
+    "never_crime_terms_note": "Organisation/brand/person names are filtered: any ORG/BANK/PERSON entity value is never used as a crime keyword."
+  },
+  "law_mapping": {
+    "IN": {
+      "bns_effective_date": "2024-07-01",
+      "ipc_to_bns": {
+        "420": "318(4)",
+        "406": "316(2)",
+        "409": "316(5)",
+        "120B": "61(2)",
+        "120A": "61(1)",
+        "467": "338",
+        "468": "336(3)",
+        "471": "340(2)",
+        "403": "314"
+      },
+      "ipc_to_bns_source": "NCRB IPC-BNS correspondence table https://www.ncrb.mha.gov.in/uploads/SankalanPortal/SectionTableBNS.html (verified 2026-11-07)",
+      "ipc_titles": {
+        "420": "cheating and dishonestly inducing delivery of property",
+        "406": "criminal breach of trust",
+        "409": "criminal breach of trust by public servant/banker/agent",
+        "120B": "criminal conspiracy",
+        "467": "forgery of valuable security",
+        "468": "forgery for cheating",
+        "471": "using forged document as genuine",
+        "403": "dishonest misappropriation"
+      },
+      "label": "AI-suggested, NOT verified: confirm with the FIR/chargesheet and counsel before citing.",
+      "actions": {
+        "financial": "Coordinate with ED (PMLA), CBI/Bank Securities & Fraud Cell and State EOW; for company-route diversion also SFIO/MCA; for listed entities SEBI.",
+        "general": "Coordinate with State Police / Crime Branch and, for cross-state cases, CBI/NIA."
+      },
+      "jurisdiction_label": "India (detected from {basis})"
+    },
+    "default": {
+      "label": "AI-suggested, NOT verified: jurisdiction not confidently detected; no statute suggested.",
+      "jurisdiction_label": "Not confidently detected (no country markers in location or narrative)",
+      "actions": {
+        "financial": "Coordinate with the competent financial-crime / anti-money-laundering authority of the jurisdiction.",
+        "general": "Coordinate with the competent law-enforcement authority of the jurisdiction."
+      }
+    }
+  },
+  "next_evidence": {
+    "financial": [
+      [
+        "High",
+        "Loan sanction / disbursement documents",
+        "Shows who approved what, on which terms, and the stated end use of funds"
+      ],
+      [
+        "High",
+        "Bank statements of borrower and associated entities",
+        "Traces the alleged diversion/siphoning of loan funds"
+      ],
+      [
+        "High",
+        "ED / CBI FIRs, ECIR and chargesheets",
+        "Primary record of the allegations and the evidence relied on"
+      ],
+      [
+        "Medium",
+        "MCA / ROC filings (directors, charges, related parties)",
+        "Identifies associated entities and fund routes"
+      ],
+      [
+        "Medium",
+        "Court / DRT / NCLT orders",
+        "Recovery, insolvency and fugitive-offender status"
+      ],
+      [
+        "Medium",
+        "SEBI orders and stock-exchange disclosures",
+        "Regulatory findings for listed entities"
+      ],
+      [
+        "Medium",
+        "Forensic audit reports commissioned by lenders",
+        "Independent account of fund flows"
+      ],
+      [
+        "Low",
+        "Photo / ID documents of the subject",
+        "Identity resolution only; not evidence of the financial offence"
+      ]
+    ],
+    "financial_categories": [
+      "financial crime",
+      "financial",
+      "fraud",
+      "economic offence",
+      "money laundering",
+      "bank fraud",
+      "corporate fraud"
+    ],
+    "violent_categories": [
+      "robbery",
+      "murder",
+      "homicide",
+      "assault",
+      "kidnapping",
+      "violent crime",
+      "burglary",
+      "theft"
+    ]
+  },
+  "threat": {
+    "not_assessed": "NOT ASSESSED",
+    "financial_basis_crimes": [
+      "Bank Fraud",
+      "Cheating",
+      "Criminal Breach of Trust",
+      "Diversion / Siphoning of Funds",
+      "Money Laundering",
+      "Wilful Default",
+      "Fugitive Economic Offence",
+      "Embezzlement",
+      "Securities Fraud",
+      "Tax Evasion",
+      "Bribery / Corruption",
+      "Foreign Exchange Violation"
+    ]
+  },
+  "risk_display": {
+    "bands": [
+      [
+        70,
+        "High"
+      ],
+      [
+        40,
+        "Medium"
+      ],
+      [
+        0,
+        "Low"
+      ]
+    ],
+    "fallback_label": "{band} (heuristic estimate from narrative-text signals; risk model not used, its input does not match case features). Crime-classification severity: {severity}"
+  },
+  "case_id": {
+    "format": "NXF-{year}-{num:04d}",
+    "valid_regex": "^(?=.*\\d)[A-Za-z0-9][A-Za-z0-9/_.:#-]{2,59}$",
+    "note": "A Case ID must contain a digit and no spaces; otherwise an NXF id is generated and the typed value is kept as 'user reference'."
+  },
+  "timezone": {
+    "name": "IST",
+    "offset_minutes": 330,
+    "label": "IST (+05:30)"
+  }
+}

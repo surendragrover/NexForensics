@@ -86,6 +86,17 @@ class HybridRules:
             alt = "|".join(re.escape(w) for w in words)
             # word boundaries for Latin; Devanagari has no \b, so use look-arounds on letters
             self.lex[label] = re.compile(r"(?<![A-Za-z\u0900-\u097F])(" + alt + r")(?![A-Za-z\u0900-\u097F])", re.I)
+        # p23 (v4.1): case-sensitive lexicons for short acronyms (ED, CBI, BNS ...),
+        # so "ed"/"Ed" in ordinary text is not an agency.
+        self.lex_cs = {}
+        for label, words in r.get("lexicons_case_sensitive", {}).items():
+            words = sorted({w for w in words if w}, key=len, reverse=True)
+            if words:
+                alt = "|".join(re.escape(w) for w in words)
+                self.lex_cs[label] = re.compile(r"(?<![A-Za-z\u0900-\u097F])(" + alt + r")(?![A-Za-z\u0900-\u097F])")
+        # labels whose values must not also sit in ORG/PERSON/LOC (an agency or a
+        # law is not a person or a place)
+        self.exclusive = list(r.get("exclusive_labels", []))
         self.gazetteers = {g["entity"]: {v.lower(): v for v in g["values"]} for g in r.get("context_rules", [])}
         self.risk = r.get("risk_score", {})
         self.sensitive = set(r.get("sensitive_labels", []))
@@ -199,9 +210,20 @@ class HybridRules:
             left = text[max(0, m.start() - 30):m.start()]
             if self.account_ctx.search(left) and not _luhn_card_like(m.group(0), left):
                 add("ACCOUNT", m.group(0), m.span())
-        for label, rx in self.lex.items():
+        # p23 (v4.1): all lexicon hits compete; the longest span wins an overlap
+        # ("Prevention of Corruption Act" is a LAW, not the CRIME "corruption"),
+        # then they are added in text order.
+        _lex_hits = []
+        for label, rx in list(self.lex.items()) + list(getattr(self, "lex_cs", {}).items()):
             for m in rx.finditer(text):
-                add(label, m.group(0), m.span())
+                _lex_hits.append((m.start(), m.end(), label, m.group(0)))
+        _chosen = []
+        for a, b, label, val in sorted(_lex_hits, key=lambda h: (-(h[1] - h[0]), h[0])):
+            if any(a < y and x < b for x, y, _, _ in _chosen):
+                continue
+            _chosen.append((a, b, label, val))
+        for a, b, label, val in sorted(_chosen):
+            add(label, val, (a, b))
         # ORG by legal/business suffix: "Kingfisher Airlines Ltd", "HDFC Bank"
         for m in self._ORG_SUFFIX.finditer(text):
             v = re.sub(r"^(?:The|A|An|At|In|On|Of|To|From|With|By|And)\s+", "", m.group(0))
@@ -293,13 +315,30 @@ class HybridRules:
                 else:
                     keep.append(v)
             merged[label] = keep
+        # p23: a value found as AGENCY/LAW is removed from ORG/PERSON/LOC/BANK
+        for ex in getattr(self, "exclusive", []):
+            exv = {v.lower() for v in merged.get(ex, [])}
+            if not exv:
+                continue
+            for other in ("ORG", "PERSON", "LOC", "BANK", "NATL"):
+                if other in merged:
+                    merged[other] = [v for v in merged[other] if v.lower() not in exv]
+                    for v in list(prov.get(other, {})):
+                        if v.lower() in exv:
+                            prov[other].pop(v, None)
+                    if not merged[other]:
+                        merged.pop(other)
+                        prov.pop(other, None)
         return merged, prov
 
     def score(self, ents: dict) -> float:
         cfg = self.risk or {}
         s = float(cfg.get("base", 0.0))
+        # p23 (v4.1): procedural / status words (FIR, chargesheet, arrested ...) are
+        # kept as entities but do not add risk
+        non_scoring = {w.lower() for w in cfg.get("non_scoring_values", [])}
         for label, w in (cfg.get("per_entity", {}) or {}).items():
-            s += len({x.lower() for x in ents.get(label, [])}) * float(w)
+            s += len({x.lower() for x in ents.get(label, []) if x.lower() not in non_scoring}) * float(w)
         return round(min(s, float(cfg.get("cap", 95.0))), 1)
 
 

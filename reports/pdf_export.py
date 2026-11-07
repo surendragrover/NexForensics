@@ -16,6 +16,7 @@ single largest function in the file).
 """
 
 import io
+import re
 import time
 import traceback
 from datetime import datetime
@@ -305,7 +306,7 @@ def export_report_pdf(report_data):
             c.setFillColor(FOOTER_GRAY)
             c.drawCentredString(width / 2, 32,
                 "CONFIDENTIAL — AI-generated report. Must be reviewed by a qualified investigator.")
-            c.drawString(margin_x, 18, f"Case: {safe_case}  |  Generated {_gen_time}  |  Content SHA-256 {_content_sha[:16]}")
+            c.drawString(margin_x, 18, f"Case: {safe_case}  |  Generated {_gen_time}  |  Content SHA-256 {_content_sha[:16]}… (full value in Report Integrity section)")
             c.drawRightString(width - margin_x, 18, f"Page {c.getPageNumber()}")
             # Belt-and-suspenders: guarantees a clean graphics/text state
             # (font, colors, char-spacing, line width, clip path...) for
@@ -550,7 +551,8 @@ def export_report_pdf(report_data):
              "subject. Read this as a property of the narrative text, NOT as a measure of the subject's "
              "personal truthfulness, unless the submitted text is confirmed to directly quote the subject."),
             ("Escalation Probability", (
-                f"{_unified_threat.get('escalation_prob')}%" if _unified_threat.get('escalation_prob') is not None else None
+                _unified_threat.get('escalation_display') or
+                (f"{_unified_threat.get('escalation_prob')}%" if _unified_threat.get('escalation_prob') is not None else None)
             ), "30-day escalation risk from the Threat Forecast model — a different computation than Deception Score"),
             ("Evidence Confidence", (
                 f"{(d.get('confidence_transparency', {}) or {}).get('canonical_confidence', {}).get('canonical_confidence')}%"
@@ -638,13 +640,13 @@ def export_report_pdf(report_data):
              P("Canonical evidence-weighted confidence (see Confidence Transparency)")],
             [P("Identity Confidence"), P("0% — not established"),
              P("No independent identity resolution has confirmed a specific individual for this case")],
-            [P("Risk Score"), P(f"{d.get('risk', 'N/A')}" if not isinstance(d.get('risk'), (int, float)) else f"{d.get('risk'):.1f}%"),
+            [P("Risk Score"), P(d.get("risk_display") if d.get("risk_is_heuristic") else (f"{d.get('risk', 'N/A')}" if not isinstance(d.get('risk'), (int, float)) else f"{d.get('risk'):.1f}%")),
              P("Investigator Engine's own risk-model output")],
 
             _tier_row("3. INTELLIGENCE — reasoning built on top of that analysis"),
             [P("Hypothesis Confidence"), P(f"{_reasoning_top.get('confidence', 'N/A')}%" if _reasoning_top else "N/A"),
              P(f"Leading hypothesis: {_reasoning_top.get('hypothesis', 'N/A')}" if _reasoning_top else "No active hypothesis")],
-            [P("Threat Forecast"), P(f"{(d.get('threat', {}) or {}).get('escalation_prob', 'N/A')}%"),
+            [P("Threat Forecast"), P((d.get('threat', {}) or {}).get('escalation_display') or f"{(d.get('threat', {}) or {}).get('escalation_prob', 'N/A')}%"),
              P("30-day escalation probability from the Threat Forecast model")],
             [P("Fused Confidence"), P("see Advanced Intelligence Report, below"),
              P("Combines evidence, hypothesis, and readiness signals into one Executive Dashboard figure")],
@@ -810,7 +812,7 @@ def export_report_pdf(report_data):
         # PAGE 1: Case Info, Crime Classification, Evidence Summary, Scores
         story.append(Paragraph("CASE INFORMATION", h2))
         case_tbl = Table([
-            [P("Case ID", small), P(d.get("case_id", "N/A")),
+            [P("Case ID", small), P(d.get("case_id", "N/A") + (f"<br/>(user reference: {d.get('case_user_reference')})" if d.get("case_user_reference") else "")),
              P("Timestamp", small), P(d.get("timestamp", "N/A"))],
             [P("Case Title", small), P(d.get("case_title", "N/A")),
              P("Case Priority", small), P(d.get("case_priority", "Medium"))],
@@ -932,8 +934,9 @@ def export_report_pdf(report_data):
              P("Jurisdiction", small), P(d.get("crime_jurisdiction", "N/A"))],
             [P("Potential Applicable Law", small), P(d.get("crime_statutes", "Pending Review")),
              P("", small), P("")],
-            [P("", small), P("AI-suggested from keyword match — NOT backend-verified. "
-                              "Confirm against actual jurisdiction/counsel before citing.", small),
+            [P("", small), P((d.get("crime_law_label") or "AI-suggested from keyword match — NOT backend-verified. "
+                              "Confirm against actual jurisdiction/counsel before citing.")
+                             + ((" " + (d.get("crime_law") or {}).get("date_note", "") + ".") if (d.get("crime_law") or {}).get("date_note") else ""), small),
              P("", small), P("")],
             [P("Evidence Found", small), P(ev_text, evidence_style),
              P("", small), P("")],
@@ -1003,7 +1006,9 @@ def export_report_pdf(report_data):
         # Same _deception_has_voice gate, same renaming pattern.
         cards_tbl = Table([[score_card("Deception Score", d.get("deception") if d.get("_deception_has_voice") else None),
                             score_card("Narrative Credibility", d.get("credibility") if d.get("_deception_has_voice") else None),
-                            score_card("Risk Level", _risk_val),
+                            (score_card("Risk Level", _risk_val) if not d.get("risk_is_heuristic") else
+                             [P(f'<font color="{severity_color(str(d.get("risk_band", "")).upper() if str(d.get("risk_band", "")).upper() != "MEDIUM" else "Medium").hexval()}">{d.get("risk_band", "N/A")}</font>', card_num),
+                              P("RISK LEVEL (HEURISTIC ESTIMATE)", card_lbl)]),
                             # BUG FIX (2026-08-20 — High): this card used to
                             # be labelled bare "Confidence" while showing
                             # active_models*20 — a count of how many AI
@@ -1054,8 +1059,7 @@ def export_report_pdf(report_data):
         # + document consistency" claimed all three regardless of what was
         # actually provided.
         _id_basis_parts = []
-        if _face_ev.get("status") == "Evidence analyzed":
-            _id_basis_parts.append("Face")
+        # p23: a face embedding with no reference face is not an identity-fraud basis
         if _voice_ev.get("status") == "Evidence analyzed":
             _id_basis_parts.append("voice")
         if _doc_analyzed:
@@ -1314,7 +1318,7 @@ def export_report_pdf(report_data):
         watch_rows = [
             [P("Check", th), P("Result", th), P("Details", th)],
             [P("Match Confidence"), severity_cell(wl.get("match_confidence", "NONE")),
-             P("STRONG=name string closely matches (NOT person confirmed), PARTIAL=verify, WEAK=coincidental only")],
+             P("STRONG=name string closely matches (NOT person confirmed), PARTIAL=verify, POSSIBLE=spelling variant (verify identity), WEAK=coincidental only")],
             [P("Database Match"), severity_cell(_safe_truncate(dm_text, 60)),
              P(f"Searched across {len(dm.get('datasets', {}))} dataset(s)" if dm.get("count") else "master_search_index")],
             [P("Criminal History"), severity_cell(_safe_truncate(_honest_negative(wl.get("criminal_history", "NO RECORD")), 64)),
@@ -1339,6 +1343,13 @@ def export_report_pdf(report_data):
             [P("Subject Status"), severity_cell(wl.get("status", "UNKNOWN")),
              P("Current disposition")],
         ]
+        if wl.get("possible_variant_matches"):
+            watch_rows.append([
+                P("Possible Matches"),
+                P(f"{len(wl['possible_variant_matches'])} spelling-variant record(s) — POSSIBLE, verify identity"),
+                P("; ".join(f"[{m.get('dataset')}] {m.get('name')} ({m.get('pairs_text') or 'variant'})"
+                            for m in wl["possible_variant_matches"][:3])[:220]),
+            ])
         weak_matches = wl.get("weak_matches_for_review", [])
         if weak_matches:
             watch_rows.append([
@@ -1625,6 +1636,12 @@ def export_report_pdf(report_data):
 
         # ── MO FINGERPRINTING — Link to Unsolved Cases ──────────────────────
         mo_links = d.get("mo_fingerprint_links", {})
+        if not mo_links.get("linked_cases") and mo_links.get("suppressed_links"):
+            story.append(Spacer(1, 14))
+            story.append(Paragraph("MO FINGERPRINTING — LINK TO UNSOLVED CASES", h2))
+            story.append(P(mo_links.get("note") or "No MO link found.", evidence_style))
+            for c in mo_links["suppressed_links"][:3]:
+                story.append(P(f"  × Not used: case {c.get('case_id','?')} [{c.get('crime_type','?')}] — {c.get('suppressed_reason','')}", small))
         if mo_links.get("linked_cases") or mo_links.get("confirmed_links"):
             story.append(Spacer(1, 14))
             story.append(Paragraph("MO FINGERPRINTING — LINK TO UNSOLVED CASES", h2))
@@ -1656,7 +1673,7 @@ def export_report_pdf(report_data):
                     P(f"{c.get('entry_method') or 'Not recorded'} / {c.get('escape_method') or 'Not recorded'}"),
                     P(f"{c.get('planning_level') or 'Not recorded'} / {c.get('team_size') or 'Not recorded'}"),
                     P(c.get("mo_signature") or "Not recorded"),
-                    P(f"{c.get('fingerprint_score', 0)}% ({c.get('fingerprint_match_level', 'LOW')})"),
+                    P(f"{c.get('fingerprint_score', 0)}% ({c.get('fingerprint_match_level', 'LOW')}); link: {c.get('link_confidence', 'n/a')}"),
                 ])
             mo_tbl = Table(mo_rows, colWidths=[40, 85, 130, 80, 80, 22, 55])
             mo_tbl.setStyle(TableStyle([
@@ -1811,7 +1828,7 @@ def export_report_pdf(report_data):
         story.append(Spacer(1, 14))
         story.append(Paragraph("INVESTIGATION TIMELINE", h2))
         story.append(P(
-            "AI-extracted from the case narrative — verify every timestamp against "
+            "First row is the intake incident date as reported; the rest are AI-extracted from the case narrative — verify every timestamp against "
             "CCTV, call records, or other independent sources before use.",
             alert_amber
         ))
@@ -1819,7 +1836,7 @@ def export_report_pdf(report_data):
         if timeline_pdf:
             tl_rows = [[P("Time", th), P("Event", th)]]
             for ev in timeline_pdf:
-                tl_rows.append([P(str(ev.get("time", "?"))), P(ev.get("event", ""))])
+                tl_rows.append([P(str(ev.get("time", "?"))), P(ev.get("event", "") + (f"  <i>[{ev.get('source')}]</i>" if ev.get("source") else ""))])
             tl_tbl = Table(tl_rows, colWidths=[100, 402])
             tl_tbl.setStyle(TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), DARK),
@@ -1897,13 +1914,14 @@ def export_report_pdf(report_data):
             [P("Physical Threat"), severity_cell(threat.get("physical", "None")),
              P(_physical_basis)],
             [P("Financial Threat"), severity_cell(threat.get("financial", "None")),
-             P(_financial_basis)],
+             P((threat.get("basis") or {}).get("financial") or _financial_basis)],
             [P("Cyber Threat"), severity_cell(threat.get("cyber", "None")),
-             P(_cyber_basis)],
+             P((threat.get("basis") or {}).get("cyber") or _cyber_basis)],
             [P("Public Safety Risk"), severity_cell(threat.get("public_safety", "None")),
              P(_public_basis)],
-            [P("Escalation Probability"), severity_cell(f"{threat.get('escalation_prob',0):.1f}%"),
-             P("Combined risk factors over 30-day horizon")],
+            [P("Escalation Probability"),
+             severity_cell(threat.get("escalation_display") or (f"{threat.get('escalation_prob'):.1f}%" if isinstance(threat.get('escalation_prob'), (int, float)) else "NOT ASSESSED")),
+             P((threat.get("basis") or {}).get("escalation") or "Combined risk factors over 30-day horizon")],
         ]
         threat_tbl = Table(threat_rows, colWidths=[140, 100, 252])
         threat_tbl.setStyle(TableStyle([
@@ -1945,8 +1963,10 @@ def export_report_pdf(report_data):
                 # Not a hash — it's a status sentence. Truncate at a word
                 # boundary instead of chopping it into 4-char fragments.
                 return _safe_truncate(h, n * 2)
-            short = h[:n] + "…"
-            return " ".join(short[i:i+4] for i in range(0, len(short), 4))
+            # p23: full SHA-256 (no truncation), split in two halves so it wraps
+            if re.fullmatch(r"[0-9a-fA-F]{64}", h):
+                return h[:32] + "<br/>" + h[32:]
+            return h
 
         ev_rows = [
             [P("Evidence Type", th), P("Hash / Status", th), P("Metadata", th)],

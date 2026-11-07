@@ -713,8 +713,17 @@ class HFImageClassifierEngine:
             else:
                 return
 
-            self.processor = AutoImageProcessor.from_pretrained(src, **load_kwargs)
-            self.model = AutoModelForImageClassification.from_pretrained(src, **load_kwargs)
+            try:
+                self.processor = AutoImageProcessor.from_pretrained(src, **load_kwargs)
+                self.model = AutoModelForImageClassification.from_pretrained(src, **load_kwargs)
+            except Exception as _e_local:
+                if repo_id is None:
+                    raise
+                # p23b: local cache missing -> fetch from Hugging Face Hub (owner request 2026-11-07)
+                log.info(f"{name}: local copy unavailable ({_e_local}); loading {repo_id} from Hugging Face Hub")
+                hub_kwargs = {"cache_dir": str(cache_dir)} if cache_dir is not None else {}
+                self.processor = AutoImageProcessor.from_pretrained(repo_id, **hub_kwargs)
+                self.model = AutoModelForImageClassification.from_pretrained(repo_id, **hub_kwargs)
             self.model.eval()
             self.id2label = dict(self.model.config.id2label)
             self.ready = True
