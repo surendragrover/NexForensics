@@ -3169,6 +3169,7 @@ with gr.Blocks(theme=THEME, title="InvestigatorAI",
                 label="Re-open a past investigation",
                 choices=[], value=None,
                 interactive=True,
+                allow_custom_value=True,  # p31: per-session choices are lost on server restart
             )
             load_history_btn = gr.Button("📂  Load Selected Report", size="sm")
 
