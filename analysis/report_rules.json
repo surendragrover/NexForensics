@@ -765,5 +765,65 @@
       "Investigated",
       "Family"
     ]
+  },
+  "financial_risk_rules": {
+    "note": "p40 (2026-11-08): rule-based financial risk from narrative allegations. Not a model and not transaction analysis. Edit points here.",
+    "crime_points": {
+      "Accounting / Financial Statement Fraud": 30,
+      "Bank Fraud": 30,
+      "Securities Fraud": 25,
+      "Money Laundering": 25,
+      "Fugitive Economic Offence": 25,
+      "Diversion / Siphoning of Funds": 20,
+      "Embezzlement": 20,
+      "Criminal Breach of Trust": 15,
+      "Cheating": 15,
+      "Bribery / Corruption": 15,
+      "Wilful Default": 15,
+      "Tax Evasion": 15,
+      "Criminal Conspiracy": 10,
+      "Forgery": 10,
+      "Foreign Exchange Violation": 10
+    },
+    "amount_bands_crore": [
+      [
+        1000,
+        25
+      ],
+      [
+        100,
+        15
+      ],
+      [
+        10,
+        8
+      ],
+      [
+        1,
+        4
+      ]
+    ],
+    "usd_crore_per_million": 8,
+    "absconding_keywords": [
+      "left india",
+      "fled",
+      "absconded",
+      "absconding",
+      "fugitive",
+      "escaped abroad",
+      "lookout circular",
+      "red notice",
+      "red corner notice"
+    ],
+    "absconding_points": 15,
+    "watchlist_points": {
+      "regulatory": 5,
+      "international": 10,
+      "fugitive": 10,
+      "interpol": 10
+    },
+    "floor_if_financial_crime": 40,
+    "cap": 95,
+    "label": "rule-based score from narrative allegations and name-matches; no transactions analysed"
   }
 }

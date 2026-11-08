@@ -513,3 +513,63 @@ def parse_network_names(network_text: str) -> list[dict]:
             if part and part.lower() not in _agencies and part[:1].isupper():
                 out.append({"name": part, "role": role.strip()})
     return out
+
+
+# ── p40 (2026-11-08): rule-based financial risk ──────────────────────────────
+def _amount_crore(text: str) -> float:
+    cfg = RULES.get("financial_risk_rules", {}) or {}
+    usd = float(cfg.get("usd_crore_per_million", 8))
+    best = 0.0
+    for m in re.finditer(r"(?:rs\.?|inr|₹)?\s?(\d[\d,]*(?:\.\d+)?)\s?(crore|cr|lakh|billion|bn|million|mn)\b\s*(dollars|usd)?", (text or "").lower()):
+        n = float(m.group(1).replace(",", ""))
+        unit, cur = m.group(2), m.group(3)
+        pre = (text or "").lower()[max(0, m.start() - 4):m.start() + 1]
+        dollar = bool(cur) or "$" in pre
+        if unit in ("crore", "cr"):
+            v = n
+        elif unit == "lakh":
+            v = n / 100
+        elif unit in ("billion", "bn"):
+            v = n * 1000 * usd if dollar else n * 100
+        else:
+            v = n * usd if dollar else n / 10
+        best = max(best, v)
+    return best
+
+
+def financial_risk_from_rules(crimes_all, narrative: str = "", watchlist: dict | None = None,
+                              sanction_kind_value: str = "unknown") -> tuple[float, list[str]]:
+    cfg = RULES.get("financial_risk_rules", {}) or {}
+    pts = cfg.get("crime_points", {}) or {}
+    names = [c.get("crime") if isinstance(c, dict) else str(c) for c in (crimes_all or [])]
+    score, basis = 0.0, []
+    for n in dict.fromkeys(names):
+        if n in pts:
+            score += pts[n]
+            basis.append(f"{n} alleged (+{pts[n]})")
+    fin = any(n in pts for n in names)
+    amt = _amount_crore(narrative)
+    for thr, p in cfg.get("amount_bands_crore", []):
+        if amt >= thr:
+            score += p
+            basis.append(f"amount about Rs {amt:,.0f} crore or more (+{p})")
+            break
+    low = (narrative or "").lower()
+    wl = watchlist or {}
+    kw = [k for k in cfg.get("absconding_keywords", []) if k in low]
+    if kw or str(wl.get("status", "")).startswith("FUGITIVE"):
+        p = int(cfg.get("absconding_points", 15))
+        score += p
+        basis.append(f"absconding/fugitive indicator: {', '.join(kw[:2]) or 'dataset status'} (+{p})")
+    wp = cfg.get("watchlist_points", {}) or {}
+    if "YES" in str(wl.get("sanctions", "")):
+        k = "regulatory" if sanction_kind_value == "regulatory" else "international"
+        score += wp.get(k, 5)
+        basis.append(f"{k} list name-match, identity unverified (+{wp.get(k, 5)})")
+    if "YES" in str(wl.get("interpol", "")):
+        score += wp.get("interpol", 10)
+        basis.append(f"Interpol name-match, identity unverified (+{wp.get('interpol', 10)})")
+    if fin and score < cfg.get("floor_if_financial_crime", 40):
+        score = float(cfg.get("floor_if_financial_crime", 40))
+        basis.append(f"floor for an alleged financial offence ({score:g})")
+    return round(min(score, float(cfg.get("cap", 95))), 1), basis
