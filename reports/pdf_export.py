@@ -160,13 +160,13 @@ def export_report_pdf(report_data):
 
         NAVY   = colors.HexColor("#0b1220")
         RED    = colors.HexColor("#dc2626")
-        GRAY   = colors.HexColor("#94a3b8")
+        GRAY   = colors.HexColor("#475569")
         LGRAY  = colors.HexColor("#f1f5f9")
         BORDER = colors.HexColor("#e2e8f0")
         DARK   = colors.black
         BAR_H  = 78
-        AMBER  = colors.HexColor("#f59e0b")
-        GREEN  = colors.HexColor("#16a34a")
+        AMBER  = colors.HexColor("#b45309")
+        GREEN  = colors.HexColor("#15803d")
 
         def severity_color(val):
             if val is None: return GRAY
@@ -306,7 +306,7 @@ def export_report_pdf(report_data):
             c.setFillColor(FOOTER_GRAY)
             c.drawCentredString(width / 2, 32,
                 "CONFIDENTIAL — AI-generated report. Must be reviewed by a qualified investigator.")
-            c.drawString(margin_x, 18, f"Case: {safe_case}  |  Generated {_gen_time}  |  Content SHA-256 {_content_sha[:16]}… (full value in Report Integrity section)")
+            c.drawString(margin_x, 18, f"Case: {safe_case}  |  Generated {_gen_time}  |  Content SHA-256 {_content_sha[:16]}… (full hash: Integrity section)")
             c.drawRightString(width - margin_x, 18, f"Page {c.getPageNumber()}")
             # Belt-and-suspenders: guarantees a clean graphics/text state
             # (font, colors, char-spacing, line width, clip path...) for
@@ -760,9 +760,9 @@ def export_report_pdf(report_data):
                          if v not in ("ANALYZED", "HEURISTIC FALLBACK", "FALLBACK ANALYZED")]
 
         exec_style = ParagraphStyle("modexec", fontName="Times-Bold", fontSize=9,
-                                     textColor=colors.HexColor("#16a34a"), leading=14)
+                                     textColor=colors.HexColor("#15803d"), leading=14)
         notexec_style = ParagraphStyle("modnotexec", fontName="Times-Roman", fontSize=9,
-                                        textColor=colors.HexColor("#94a3b8"), leading=14)
+                                        textColor=colors.HexColor("#475569"), leading=14)
         mod_title_style = ParagraphStyle("modtitle", fontName="Times-Bold", fontSize=9.5,
                                           textColor=colors.black, leading=13)
 
@@ -847,7 +847,7 @@ def export_report_pdf(report_data):
         story.append(case_tbl)
 
         story.append(Spacer(1, 12))
-        v_bg = colors.HexColor(d.get("v_color", "#f59e0b"))
+        v_bg = colors.HexColor(d.get("v_color", "#b45309"))
         verdict_tbl = Table([[P(f"VERDICT — {d.get('v_label','')}", verdict_title)],
                               [P(d.get("v_text", ""), verdict_body)]],
                              colWidths=[480])
@@ -1172,7 +1172,7 @@ def export_report_pdf(report_data):
         img_q = d.get("image_quality")
         if img_q:
             q_label, q_note = img_q
-            q_color = {"Good": "#22c55e", "Average": "#f59e0b", "Poor": "#ef4444"}.get(q_label, "#94a3b8")
+            q_color = {"Good": "#15803d", "Average": "#b45309", "Poor": "#ef4444"}.get(q_label, "#475569")
             story.append(P(
                 f'  Evidence Reliability — Input Quality: <font color="{q_color}"><b>{q_label}</b></font> — {q_note}',
                 small
@@ -1192,9 +1192,9 @@ def export_report_pdf(report_data):
             # unambiguous dikhe ki classifier REAL CCTV VIDEO pe chala
             # ya fallback IMAGE pe. Ye do alag cheezein hain.
             if is_real_cctv:
-                _source_badge = f'<font color="#16a34a"><b>SOURCE: REAL CCTV VIDEO</b></font> — {cctv_source_pdf or "Unknown"}'
+                _source_badge = f'<font color="#15803d"><b>SOURCE: REAL CCTV VIDEO</b></font> — {cctv_source_pdf or "Unknown"}'
             else:
-                _source_badge = f'<font color="#f59e0b"><b>SOURCE: IMAGE FALLBACK</b></font> — {cctv_source_pdf or "Unknown"}'
+                _source_badge = f'<font color="#b45309"><b>SOURCE: IMAGE FALLBACK</b></font> — {cctv_source_pdf or "Unknown"}'
                 _source_badge += " <i>(no CCTV video submitted — classifier ran on fallback photo)</i>"
             story.append(P(f"  {_source_badge}", small))
             for r in cctv_result_pdf[:5]:
@@ -2456,7 +2456,7 @@ def export_report_pdf(report_data):
                     _progress = round(sum(_progress_vals) / len(_progress_vals), 1)
                     story.append(Spacer(1, 6))
                     story.append(P("Investigation Progress", small))
-                    _progress_color = "#16a34a" if _progress >= 66 else ("#f59e0b" if _progress >= 33 else "#ef4444")
+                    _progress_color = "#15803d" if _progress >= 66 else ("#b45309" if _progress >= 33 else "#ef4444")
                     story.append(_pdf_progress_bar(_progress, total_width=300, height=11, fill_color=_progress_color))
                     story.append(P(f"{_progress}%", evidence_style))
                 story.append(Spacer(1, 8))
@@ -2473,7 +2473,7 @@ def export_report_pdf(report_data):
                         conf = float(conf)
                     except (TypeError, ValueError):
                         conf = 0
-                    bar_color = "#16a34a" if conf >= 66 else ("#f59e0b" if conf >= 33 else "#ef4444")
+                    bar_color = "#15803d" if conf >= 66 else ("#b45309" if conf >= 33 else "#ef4444")
                     row = Table([[
                         P(str(ev_type).replace("_", " ").title(), small),
                         _pdf_progress_bar(conf, total_width=180, height=9, fill_color=bar_color),
@@ -2523,8 +2523,8 @@ def export_report_pdf(report_data):
                 if kc:
                     story.append(P(_humanize(kc), evidence_style))
                 _prov_tag_color = {
-                    "OBSERVED": "#22c55e", "EXTRACTED": "#38bdf8",
-                    "INFERRED": "#f59e0b", "UNVERIFIED": "#f87171",
+                    "OBSERVED": "#15803d", "EXTRACTED": "#0369a1",
+                    "INFERRED": "#b45309", "UNVERIFIED": "#b91c1c",
                 }
                 for rel in (rg.get("relationships") or [])[:8]:
                     _prov = rel.get("confidence_type", "INFERRED")
@@ -2538,7 +2538,7 @@ def export_report_pdf(report_data):
                     story.append(P(
                         f"• {rel.get('from','?')} — {rel.get('relationship','connected')} → "
                         f"{rel.get('to','?')}  "
-                        f"<font color='{_prov_tag_color.get(_prov, '#94a3b8')}'><b>[{_prov}]</b></font>  "
+                        f"<font color='{_prov_tag_color.get(_prov, '#475569')}'><b>[{_prov}]</b></font>  "
                         f"(strength: {rel.get('strength',0)}, confidence: {rel.get('confidence', 0)})",
                         evidence_style))
                     story.append(P(f"   Source: {_source_str}", small))
@@ -2745,7 +2745,7 @@ def export_report_pdf(report_data):
                     small))
                 _g_tier_colors = {
                     "P1": colors.HexColor("#dc2626"),
-                    "P2": colors.HexColor("#ea580c"),
+                    "P2": colors.HexColor("#9a3412"),
                     "P3": colors.HexColor("#2563eb"),
                 }
                 g_rows = [[P("#", th), P("Direction", th), P("Tier", th), P("Hypothesis", th),
