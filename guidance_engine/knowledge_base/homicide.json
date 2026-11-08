@@ -1,0 +1,91 @@
+{
+  "hypothesis_type": "homicide",
+  "name": "Homicide",
+  "priority": 1,
+  "narrative_only": true,
+  "triggers": [
+    "murder",
+    "strangled",
+    "shot dead",
+    "stabbed",
+    "killed",
+    "dead body",
+    "body was",
+    "post-mortem"
+  ],
+  "investigation_directions": [
+    {
+      "title": "Obtain post-mortem report or forensic / DNA examination of the remains",
+      "why": "Cause of death and identity of the victim",
+      "search_targets": [
+        "Hospital / forensic lab",
+        "Remains"
+      ],
+      "cross_match": [
+        "DNA of relatives",
+        "Dental / skeletal records"
+      ],
+      "expected_evidence_gain": 40,
+      "cost": "medium",
+      "time_estimate": "1-3 weeks",
+      "agencies_to_involve": [
+        "FSL",
+        "Police"
+      ]
+    },
+    {
+      "title": "Collect call detail records and tower locations of the accused",
+      "why": "Places the accused with the victim on the date",
+      "search_targets": [
+        "Telecom operators"
+      ],
+      "cross_match": [
+        "Date and time",
+        "Location"
+      ],
+      "expected_evidence_gain": 35,
+      "cost": "low",
+      "time_estimate": "1 week",
+      "agencies_to_involve": [
+        "Police"
+      ]
+    },
+    {
+      "title": "Trace and examine the vehicle and the disposal site",
+      "why": "Scene of the offence and transport of the body",
+      "search_targets": [
+        "Vehicle",
+        "Disposal site"
+      ],
+      "cross_match": [
+        "Forensic traces",
+        "Movement record"
+      ],
+      "expected_evidence_gain": 30,
+      "cost": "medium",
+      "time_estimate": "1-2 weeks",
+      "agencies_to_involve": [
+        "FSL",
+        "Police"
+      ]
+    },
+    {
+      "title": "Record statements; any confession or approver statement before a magistrate",
+      "why": "Direct account of the offence",
+      "search_targets": [
+        "Accused",
+        "Witnesses"
+      ],
+      "cross_match": [
+        "Timeline"
+      ],
+      "expected_evidence_gain": 30,
+      "cost": "low",
+      "time_estimate": "1-2 weeks",
+      "agencies_to_involve": [
+        "Police",
+        "Magistrate"
+      ]
+    }
+  ]
+}

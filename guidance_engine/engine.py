@@ -45,7 +45,7 @@ class InvestigationGuidanceEngine:
         hits = 0
         for trig in triggers:
             t = str(trig).lower()
-            if t in narrative_lower or any(t in h for h in hyp_names_lower):
+            if t in narrative_lower or (not kb.get("narrative_only") and any(t in h for h in hyp_names_lower)):
                 hits += 1
         return hits
 

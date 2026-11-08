@@ -857,7 +857,7 @@ def _generate_actions_from_evidence(crime_info, fraud_indicators, watchlist, thr
         actions.append(f"WATCHLIST: {watchlist['fbi_watchlist']}. Coordinate with FBI liaison officer.")
         evidence_based.append("Federal watchlist match")
 
-    if watchlist.get("interpol", "NO") != "NO":
+    if watchlist.get("interpol", "NO") != "NO" and "YES" not in str(watchlist.get("interpol", "")):  # p43: no duplicate INTERPOL action
         actions.append("INTERPOL: Active notice detected. Coordinate with INTERPOL National Central Bureau.")
         evidence_based.append("International notice")
 
@@ -900,7 +900,7 @@ def _generate_actions_from_evidence(crime_info, fraud_indicators, watchlist, thr
         evidence_based.append(f"Debt: {watchlist.get('outstanding_debt', 'N/A')}")
 
     if watchlist.get("charges") and len(watchlist.get("charges", [])) > 0 and watchlist.get("charges", ["N/A"])[0] != "N/A":
-        actions.append(f"PROSECUTION: {len(watchlist.get('charges', []))} charges filed. Ensure charge sheet evidence is court-admissible and coordinate with Special Prosecutor.")
+        actions.append(f"PROSECUTION: a dataset record (name-match, identity unverified) lists {len(watchlist.get('charges', []))} charge(s). Obtain the actual FIR / charge sheet and confirm it refers to this person before relying on it.")
         evidence_based.append(f"Charges: {', '.join(watchlist.get('charges', [])[:2])}")
 
     if watchlist.get("enforcement_actions") and len(watchlist.get("enforcement_actions", [])) > 0 and watchlist.get("enforcement_actions", ["N/A"])[0] != "N/A":
