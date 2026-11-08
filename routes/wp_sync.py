@@ -32,7 +32,20 @@ def create_demo():
     db.execute("INSERT INTO ia_sessions (user_id, session_token, ip_address, expires_at, status) VALUES (%s, %s, '127.0.0.1', DATE_ADD(NOW(), INTERVAL 48 HOUR), 'active')", (user['id'], session_token))
     if demo_api_key:
         db.execute("INSERT INTO ia_api_keys (user_id, api_key, status, created_at) VALUES (%s, %s, 'active', NOW())", (user['id'], demo_api_key))
-    return jsonify({'success': True, 'flask_inv_id': user['id'], 'session_token': session_token, 'demo_password': demo_password})
+    # p37: one-time set-password link for the demo login (48 h)
+    set_url = ''
+    try:
+        _t = secrets.token_urlsafe(32)
+        db.execute("""CREATE TABLE IF NOT EXISTS ia_password_tokens (
+            id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL,
+            token_hash CHAR(64) NOT NULL UNIQUE, expires_at DATETIME NOT NULL,
+            used_at DATETIME NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)""")
+        db.execute("INSERT INTO ia_password_tokens (user_id, token_hash, expires_at) VALUES (%s, %s, DATE_ADD(NOW(), INTERVAL 48 HOUR))",
+                   (user['id'], hashlib.sha256(_t.encode()).hexdigest()))
+        set_url = 'https://nexforensics.com/app/api/auth/set-password?token=' + _t
+    except Exception:
+        set_url = ''
+    return jsonify({'success': True, 'flask_inv_id': user['id'], 'session_token': session_token, 'demo_password': demo_password, 'set_password_url': set_url})
 
 @wp_sync_bp.route('/wp/verify-user', methods=['POST'])
 def verify_user():
