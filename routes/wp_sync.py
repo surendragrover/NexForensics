@@ -111,5 +111,17 @@ def create_user():
         db.execute("INSERT INTO ia_api_keys (user_id, api_key, status, created_at, expires_at) VALUES (%s, %s, 'active', NOW(), DATE_ADD(NOW(), INTERVAL %s DAY))", (user['id'], api_key, days))
     else:
         db.execute("INSERT INTO ia_api_keys (user_id, api_key, status, created_at) VALUES (%s, %s, 'active', NOW())", (user['id'], api_key))
+    # p36: one-time set-password link (72 h), stored as SHA-256 of the token
+    set_token = secrets.token_urlsafe(32)
+    try:
+        db.execute("""CREATE TABLE IF NOT EXISTS ia_password_tokens (
+            id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL,
+            token_hash CHAR(64) NOT NULL UNIQUE, expires_at DATETIME NOT NULL,
+            used_at DATETIME NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)""")
+        db.execute("INSERT INTO ia_password_tokens (user_id, token_hash, expires_at) VALUES (%s, %s, DATE_ADD(NOW(), INTERVAL 72 HOUR))",
+                   (user['id'], hashlib.sha256(set_token.encode()).hexdigest()))
+        set_url = 'https://nexforensics.com/app/api/auth/set-password?token=' + set_token
+    except Exception:
+        set_url = ''
     return jsonify({'success': True, 'flask_user_id': user['id'], 'email': email, 'api_key': api_key,
-                    'password': password, 'password_generated': generated})
+                    'password': password, 'password_generated': generated, 'set_password_url': set_url})

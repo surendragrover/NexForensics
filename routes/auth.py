@@ -308,3 +308,41 @@ def dashboard():
         logger.error(f"Dashboard error: {str(e)}")
         return redirect('/app/login')
 
+
+# ── p36: one-time set-password page (link emailed to new users) ──
+_SETPW_HTML = """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Set your password - NexForensics</title>
+<style>body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;display:flex;justify-content:center;padding:40px 16px}
+.c{background:#1e293b;border-radius:10px;padding:28px;max-width:380px;width:100%}input{width:100%;padding:10px;margin:6px 0 14px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#fff;box-sizing:border-box}
+button,a.b{display:inline-block;background:#2563eb;color:#fff;border:0;padding:11px 18px;border-radius:6px;font-size:15px;text-decoration:none;cursor:pointer}.e{color:#f87171}.ok{color:#34d399}</style></head>
+<body><div class="c"><h2>NexForensics</h2>{body}</div></body></html>"""
+
+
+def _setpw_page(body, code=200):
+    return _SETPW_HTML.replace('{body}', body), code, {'Content-Type': 'text/html; charset=utf-8'}
+
+
+@auth_bp.route('/set-password', methods=['GET', 'POST'])
+def set_password():
+    import html as _html
+    token = (request.values.get('token') or '').strip()
+    th = hashlib.sha256(token.encode()).hexdigest() if token else ''
+    row = db.fetch_one("SELECT id, user_id FROM ia_password_tokens WHERE token_hash = %s AND used_at IS NULL AND expires_at > NOW()", (th,)) if th else None
+    if not row:
+        return _setpw_page('<p class="e">This link is invalid or has expired.</p><p>Please ask your administrator for a new link.</p>', 400)
+    form = ('<p>Choose a password for your account (at least 8 characters).</p>'
+            '<form method="POST"><input type="hidden" name="token" value="' + _html.escape(token) + '">'
+            '<label>New password</label><input type="password" name="password" minlength="8" required>'
+            '<label>Confirm password</label><input type="password" name="confirm" minlength="8" required>'
+            '<button type="submit">Set password</button></form>')
+    if request.method == 'GET':
+        return _setpw_page(form)
+    pw = request.form.get('password', '')
+    if len(pw) < 8:
+        return _setpw_page('<p class="e">Password must be at least 8 characters.</p>' + form, 400)
+    if pw != request.form.get('confirm', ''):
+        return _setpw_page('<p class="e">The two passwords do not match.</p>' + form, 400)
+    db.execute("UPDATE ia_users SET password_hash = %s WHERE id = %s", (hash_password(pw), row['user_id']))
+    db.execute("UPDATE ia_password_tokens SET used_at = NOW() WHERE id = %s", (row['id'],))
+    logger.info(f"Password set via link for user_id={row['user_id']}")
+    return _setpw_page('<p class="ok">Your password is set.</p><p><a class="b" href="/app/login">Log in</a></p>')
