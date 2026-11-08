@@ -17,6 +17,11 @@ def _build_reasoning_engine(case_id, modus, location, suspect_name, entities, oc
                              net_matches, fin_flags, veh_flags,
                              mo_links, unidentified_leads, watchlist):
     gaps, contradictions, hypotheses = [], [], []
+    try:  # p38: white-collar cases do not get photo/voice/vehicle/CCTV gaps
+        from analysis.report_rules import is_white_collar_text as _iwct
+        _white_collar = _iwct(modus or "")
+    except Exception:
+        _white_collar = False
 
     # ---------------- GAP DETECTION ----------------
     if not (modus or "").strip():
@@ -31,13 +36,13 @@ def _build_reasoning_engine(case_id, modus, location, suspect_name, entities, oc
             "why_it_matters": "Geospatial context and case-linking checks are weaker without it",
             "next_step": "Confirm exact location, or the nearest known landmark",
         })
-    if photo is None:
+    if photo is None and not _white_collar:
         gaps.append({
             "gap": "No photo evidence submitted",
             "why_it_matters": "Facial evidence and appearance-based leads are unavailable",
             "next_step": "Request any available photo or CCTV still, even low quality",
         })
-    if not voice_clip:
+    if not voice_clip and not _white_collar:
         gaps.append({
             "gap": "No voice/audio evidence submitted",
             "why_it_matters": "Voice-print corroboration is unavailable",
@@ -61,7 +66,7 @@ def _build_reasoning_engine(case_id, modus, location, suspect_name, entities, oc
             "why_it_matters": "Money flow can corroborate or rule out a motive",
             "next_step": "Request any bank/wallet references if available",
         })
-    if not veh_flags:
+    if not veh_flags and not _white_collar:
         gaps.append({
             "gap": "No vehicle/asset data checked",
             "why_it_matters": "Vehicle movement can place a subject at, or rule them out of, a scene",
@@ -144,6 +149,18 @@ def _build_reasoning_engine(case_id, modus, location, suspect_name, entities, oc
             "confidence": "low-medium",
             "source": "master_search_index (Agyat Apradhi search)",
         })
+    _dm = ((watchlist or {}).get("dataset_matches") or {})
+    if (_dm.get("count") or 0) > 0 and not _variants:
+        _dsn = ", ".join(f"{k}({v})" for k, v in list((_dm.get("datasets") or {}).items())[:4])
+        hypotheses.append({
+            "hypothesis": (f"The subject's name matches {_dm.get('count')} dataset record(s) ({_dsn}) - "
+                           "name match only, identity not verified"),
+            "supporting_evidence": [f"Match confidence: {(watchlist or {}).get('match_confidence', 'N/A')}",
+                                    f"Sanctions/debarment field: {(watchlist or {}).get('sanctions', 'NO')}"],
+            "contradicting_evidence": ["Name match alone does not confirm identity; namesakes are possible"],
+            "confidence": "low-medium",
+            "source": "master_search_index (Background & Watchlist)",
+        })
     if not hypotheses:
         hypotheses.append({
             "hypothesis": "The evidence gathered so far does not link this case to any known pattern, entity, or prior case — it may be an isolated incident, or evidence collection is still too thin to tell",
@@ -211,8 +228,11 @@ def _build_intelligence_summary(evidence_provided, crime_info, watchlist, mo_lin
                                  unidentified_leads, reasoning, active_models,
                                  confidence_level, deception, risk):
     # ---- Evidence Completeness Meter ----
-    total = len(_EVIDENCE_CHECKLIST_META)
-    provided_count = sum(1 for k in _EVIDENCE_CHECKLIST_META if evidence_provided.get(k))
+    # p38: one completeness figure. Typed associate names are case context, not a
+    # submitted evidence file, so they are not counted (matches the weighted figure).
+    _counted = [k for k in _EVIDENCE_CHECKLIST_META if k != "network"]
+    total = len(_counted)
+    provided_count = sum(1 for k in _counted if evidence_provided.get(k))
     completeness_pct = round((provided_count / total) * 100) if total else 0
     filled_blocks = round(completeness_pct / 10)
     completeness_bar = "█" * filled_blocks + "░" * (10 - filled_blocks)

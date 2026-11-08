@@ -282,7 +282,9 @@ def suggest_laws(country: dict, crimes: list[dict], incident_date: str = "") -> 
     code = (country or {}).get("code")
     cfg = lm.get(code) if code in lm else lm.get("default", {})
     financial = any(c["crime"] in (RULES.get("threat", {}) or {}).get("financial_basis_crimes", []) for c in crimes)
-    action = (cfg.get("actions", {}) or {}).get("financial" if financial else "general", "")
+    _acts = cfg.get("actions", {}) or {}
+    action = (_acts.get("accounting") if (is_accounting_case(crimes) and _acts.get("accounting")) else
+              _acts.get("financial" if financial else "general", ""))
     if code != "IN":
         return {"statutes": "None suggested: jurisdiction not confidently detected", "items": [], "code_used": None,
                 "label": cfg.get("label", ""), "jurisdiction": cfg.get("jurisdiction_label", "Not detected"), "action": action}
@@ -336,7 +338,8 @@ def next_evidence_for(crime_category: str, crimes: list[dict], evidence_provided
         return None
     ev = evidence_provided or {}
     out = []
-    for pr, rec, why in (RULES.get("next_evidence", {}) or {}).get("financial", []):
+    _key = "accounting" if is_accounting_case(crimes) else "financial"
+    for pr, rec, why in (RULES.get("next_evidence", {}) or {}).get(_key, []):
         if rec.lower().startswith("photo") and ev.get("photo") and ev.get("document"):
             continue
         out.append({"priority": pr, "recommendation": rec, "reason": why})
@@ -407,3 +410,106 @@ def financial_crimes_in(crimes_all: list[str]) -> list[str]:
 
 
 NOT_ASSESSED = (RULES.get("threat", {}) or {}).get("not_assessed", "NOT ASSESSED")
+
+
+# ── p38 (2026-11-08): accounting fraud, white-collar, sanctions kind, entities, network names ──
+ACCOUNTING_CRIME = "Accounting / Financial Statement Fraud"
+
+
+def is_accounting_case(crimes) -> bool:
+    for c in crimes or []:
+        name = c.get("crime") if isinstance(c, dict) else c
+        if name == ACCOUNTING_CRIME:
+            return True
+    return False
+
+
+def is_violent(crimes_all) -> bool:
+    marks = (RULES.get("threat", {}) or {}).get("violent_markers", [])
+    return any(m.lower() in str(c).lower() for c in (crimes_all or []) for m in marks)
+
+
+def is_white_collar(crimes_all) -> bool:
+    """Financial-offence crimes present and no violent crime."""
+    return bool(financial_crimes_in([c.get("crime") if isinstance(c, dict) else c for c in (crimes_all or [])])) \
+        and not is_violent([c.get("crime") if isinstance(c, dict) else c for c in (crimes_all or [])])
+
+
+def is_white_collar_text(text: str) -> bool:
+    return is_white_collar(classify_crimes(text or ""))
+
+
+def sanction_kind(value: str) -> str:
+    """'regulatory' (exchange/SEBI debarment etc.), 'international' (UN/OFAC/EU), or 'unknown'."""
+    cfg = RULES.get("sanctions_kinds", {}) or {}
+    v = str(value or "")
+    suf = cfg.get("strip_suffix", "")
+    if suf:
+        v = v.replace(suf, "")
+    low = v.lower()
+    if any(m in low for m in cfg.get("international_markers", [])):
+        return "international"
+    if any(re.search(r"(?<![a-z])" + re.escape(m) + r"(?![a-z])", low) for m in cfg.get("regulatory_markers", [])):
+        return "regulatory"
+    return "unknown"
+
+
+def sanction_list_name(value: str) -> str:
+    v = str(value or "")
+    m = re.search(r"listed:\s*(.+?)(?:\s*\(regulatory/sanction list|$)", v)
+    return (m.group(1).strip() if m else v.replace("YES", "").strip(" —-")) or "a regulatory list"
+
+
+def supplement_entities(text: str, entities: dict | None) -> dict:
+    """Rule-based additions to model NER: agencies, company names, money amounts.
+    Never adds CRIME terms. Existing values are kept."""
+    ents = {k: list(v) for k, v in (entities or {}).items()}
+    cfg = RULES.get("entity_supplement", {}) or {}
+    t = text or ""
+
+    def _add(key, val):
+        val = (val or "").strip(" ,.;:")
+        if not val:
+            return
+        cur = ents.setdefault(key, [])
+        if not any(val.lower() == c.lower() or val.lower() in c.lower() for c in cur):
+            cur.append(val)
+
+    for pat, label in (cfg.get("agencies", {}) or {}).items():
+        flags = 0 if (pat.isupper() and len(pat) <= 5) else re.I
+        if re.search(r"(?<![A-Za-z])" + re.escape(pat) + r"(?![A-Za-z])", t, flags):
+            _add("AGENCY", label)
+    suf = "|".join(re.escape(s) for s in sorted(cfg.get("org_suffixes", []), key=len, reverse=True))
+    stop = set(cfg.get("org_stopwords", []))
+    for m in re.finditer(r"((?:[A-Z][A-Za-z&.'-]+[ \t]+){0,3}(?:" + suf + r"))(?![A-Za-z])", t):
+        words = m.group(1).split()
+        while words and words[0] in stop:
+            words = words[1:]
+        if len(words) >= 2:
+            _add("ORG", " ".join(words))
+    for m in re.finditer(r"(?:(?:Rs\.?|INR|USD|US\$|\$|₹)\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:crore|lakh|million|billion|bn|mn))?"
+                         r"|\d[\d,]*(?:\.\d+)?\s?(?:crore|lakh|million|billion)\s?(?:dollars|rupees|usd|inr)?)", t, re.I):
+        _add("MONEY", m.group(0))
+    return ents
+
+
+def parse_network_names(network_text: str) -> list[dict]:
+    """'Name - role' / 'Name (role)' / 'A and B - role' per line or comma -> [{'name','role'}]."""
+    out = []
+    _agencies = {a.lower() for a in ((RULES.get("entity_supplement", {}) or {}).get("agencies", {}) or {})}
+    for line in re.split(r"[\n;]+", network_text or ""):
+        line = line.strip(" -•*\t")
+        if not line or re.match(r"(?i)^(investigated|probed|charged|prosecuted|examined|raided|case registered)\b", line):
+            continue
+        role = ""
+        m = re.match(r"^(.*?)\s+[-–—:]\s+(.+)$", line)
+        if m:
+            line, role = m.group(1), m.group(2)
+        m = re.match(r"^(.*?)\s*\((.+)\)\s*$", line)
+        if m:
+            line, role = m.group(1), role or m.group(2)
+        for part in re.split(r",|\s+and\s+|\s*&\s*|/", line):
+            part = part.strip(" .")
+            if part and part.lower() not in _agencies and part[:1].isupper():
+                out.append({"name": part, "role": role.strip()})
+    return out

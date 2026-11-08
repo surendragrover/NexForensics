@@ -226,6 +226,45 @@
     "note": "Crime TYPES only. A company, brand or person name is never a crime type or crime evidence. 'ipc'/'bns' are section numbers verified against NCRB IPC-BNS table (https://www.ncrb.mha.gov.in/uploads/SankalanPortal/SectionTableBNS.html, fetched 2026-11-07).",
     "entries": [
       {
+        "crime": "Accounting / Financial Statement Fraud",
+        "severity": "High",
+        "keywords": [
+          "accounting fraud",
+          "accounts fraud",
+          "falsified accounts",
+          "falsified the accounts",
+          "falsification of accounts",
+          "falsifying accounts",
+          "falsified books",
+          "cooked the books",
+          "fudged accounts",
+          "fudged the accounts",
+          "inflated cash",
+          "inflated revenue",
+          "inflated profits",
+          "inflated the books",
+          "fictitious cash",
+          "fictitious revenue",
+          "fictitious assets",
+          "was fictitious",
+          "overstated revenue",
+          "overstated profits",
+          "fake invoices",
+          "forged bank statements",
+          "manipulated the accounts",
+          "manipulated accounts",
+          "balance sheet fraud",
+          "window dressing"
+        ],
+        "ipc": [
+          "477A",
+          "420",
+          "409",
+          "120B"
+        ],
+        "special": []
+      },
+      {
         "crime": "Bank Fraud",
         "severity": "High",
         "keywords": [
@@ -433,23 +472,26 @@
         "467": "338",
         "468": "336(3)",
         "471": "340(2)",
-        "403": "314"
+        "403": "314",
+        "477A": "344"
       },
       "ipc_to_bns_source": "NCRB IPC-BNS correspondence table https://www.ncrb.mha.gov.in/uploads/SankalanPortal/SectionTableBNS.html (verified 2026-11-07)",
       "ipc_titles": {
         "420": "cheating and dishonestly inducing delivery of property",
         "406": "criminal breach of trust",
-        "409": "criminal breach of trust by public servant/banker/agent",
+        "409": "criminal breach of trust by public servant, banker, merchant or agent",
         "120B": "criminal conspiracy",
         "467": "forgery of valuable security",
         "468": "forgery for cheating",
         "471": "using forged document as genuine",
-        "403": "dishonest misappropriation"
+        "403": "dishonest misappropriation",
+        "477A": "falsification of accounts"
       },
       "label": "AI-suggested, NOT verified: confirm with the FIR/chargesheet and counsel before citing.",
       "actions": {
         "financial": "Coordinate with ED (PMLA), CBI/Bank Securities & Fraud Cell and State EOW; for company-route diversion also SFIO/MCA; for listed entities SEBI.",
-        "general": "Coordinate with State Police / Crime Branch and, for cross-state cases, CBI/NIA."
+        "general": "Coordinate with State Police / Crime Branch and, for cross-state cases, CBI/NIA.",
+        "accounting": "Coordinate with SFIO/MCA (company fraud), SEBI (listed company), CBI/State EOW and ED (PMLA) where proceeds were moved; obtain the forensic audit."
       },
       "jurisdiction_label": "India (detected from {basis})"
     },
@@ -523,11 +565,64 @@
       "violent crime",
       "burglary",
       "theft"
+    ],
+    "accounting": [
+      [
+        "High",
+        "Audited financial statements and the books of account (ledgers, trial balance)",
+        "The figures that were allegedly falsified"
+      ],
+      [
+        "High",
+        "Independent bank balance and fixed-deposit confirmations",
+        "Tests whether the cash and FDs in the books exist"
+      ],
+      [
+        "High",
+        "Sales invoices matched to customer confirmations and receipts",
+        "Tests whether recorded revenue is real"
+      ],
+      [
+        "High",
+        "Statutory auditor's working papers and audit reports",
+        "Shows what was checked and what was relied on"
+      ],
+      [
+        "High",
+        "CBI / SFIO / ED FIRs, chargesheets and the forensic audit",
+        "Primary record of the allegations and evidence"
+      ],
+      [
+        "Medium",
+        "SEBI orders, stock-exchange disclosures and promoter share sales or pledges",
+        "Market findings and insider gains"
+      ],
+      [
+        "Medium",
+        "MCA / ROC filings and related-party transactions",
+        "Family or group firms that received funds"
+      ],
+      [
+        "Medium",
+        "Board minutes and the confession or resignation letter",
+        "Who knew what, and when"
+      ],
+      [
+        "Medium",
+        "Payroll and employee-count records",
+        "Checks for fictitious salary payments"
+      ],
+      [
+        "Low",
+        "Photo / ID documents of the subject",
+        "Identity resolution only; not evidence of the financial offence"
+      ]
     ]
   },
   "threat": {
     "not_assessed": "NOT ASSESSED",
     "financial_basis_crimes": [
+      "Accounting / Financial Statement Fraud",
       "Bank Fraud",
       "Cheating",
       "Criminal Breach of Trust",
@@ -540,6 +635,21 @@
       "Tax Evasion",
       "Bribery / Corruption",
       "Foreign Exchange Violation"
+    ],
+    "violent_markers": [
+      "Weapon",
+      "Assault",
+      "Murder",
+      "Homicide",
+      "Kidnap",
+      "Rape",
+      "Sexual",
+      "Trafficking",
+      "Robbery",
+      "Extortion",
+      "Terror",
+      "Threat",
+      "Arson"
     ]
   },
   "risk_display": {
@@ -568,5 +678,92 @@
     "name": "IST",
     "offset_minutes": 330,
     "label": "IST (+05:30)"
+  },
+  "sanctions_kinds": {
+    "regulatory_markers": [
+      "debar",
+      "stock exchange",
+      "sebi",
+      "nse",
+      "bse",
+      "exchange",
+      "regulatory order",
+      "mca",
+      "rbi",
+      "wilful defaulter",
+      "disqualified director"
+    ],
+    "international_markers": [
+      "un security",
+      "unsc",
+      "un sc",
+      "ofac",
+      "sdn",
+      "eu consolidated",
+      "eu sanctions",
+      "hm treasury",
+      "ofsi",
+      "terror",
+      "consolidated list"
+    ],
+    "strip_suffix": "(regulatory/sanction list; check the source)"
+  },
+  "entity_supplement": {
+    "agencies": {
+      "CBI": "CBI",
+      "Central Bureau of Investigation": "CBI",
+      "ED": "ED",
+      "Enforcement Directorate": "ED",
+      "SEBI": "SEBI",
+      "SFIO": "SFIO",
+      "Serious Fraud Investigation Office": "SFIO",
+      "RBI": "RBI",
+      "Reserve Bank of India": "RBI",
+      "NIA": "NIA",
+      "EOW": "EOW",
+      "CID": "CID",
+      "Income Tax Department": "Income Tax Department",
+      "DRI": "DRI",
+      "MCA": "MCA",
+      "SEC": "SEC",
+      "Interpol": "Interpol",
+      "NCLT": "NCLT"
+    },
+    "org_suffixes": [
+      "Ltd",
+      "Ltd.",
+      "Limited",
+      "Pvt",
+      "Private Limited",
+      "Services",
+      "Properties",
+      "Infra",
+      "Bank",
+      "Corporation",
+      "Corp",
+      "Inc",
+      "LLP",
+      "Group",
+      "Industries",
+      "Technologies",
+      "Holdings",
+      "Enterprises",
+      "Airlines",
+      "Diamonds",
+      "Waterhouse"
+    ],
+    "org_stopwords": [
+      "The",
+      "In",
+      "On",
+      "From",
+      "By",
+      "And",
+      "He",
+      "She",
+      "They",
+      "Investigated",
+      "Family"
+    ]
   }
 }

@@ -731,6 +731,14 @@ def _assess_threat_from_evidence(deception, risk, crime_info, fraud_indicators, 
     # ─── CASE PRIORITY OVERRIDE ──────────────────────────────────────────
     if case_priority in ("High", "Critical") and public == "None":
         public = "HIGH — Critical case priority demands immediate attention"
+    # p38: a non-violent financial offence is not a public-safety threat; severity
+    # and case priority measure seriousness/urgency, not physical danger.
+    try:
+        from analysis.report_rules import is_white_collar as _iwc
+        if _iwc(crime_info.get("all_crimes", [])) and not str(watchlist.get("status", "")).startswith(("FUGITIVE", "TERRORISM")):
+            public = "LOW — non-violent financial offence; no physical-safety evidence on file"
+    except Exception:
+        pass
     # ─── END CASE PRIORITY OVERRIDE ──────────────────────────────────────
 
     # Escalation: only assessed when there is behavioural / threat evidence.
@@ -851,8 +859,19 @@ def _generate_actions_from_evidence(crime_info, fraud_indicators, watchlist, thr
         evidence_based.append("International notice")
 
     if watchlist.get("sanctions", "NO") != "NO":
-        actions.append("SANCTIONS: Subject matches an international sanctions list. Coordinate with compliance/national security units and verify designation reference.")
-        evidence_based.append("Sanctions-list match")
+        try:
+            from analysis.report_rules import sanction_kind as _sk, sanction_list_name as _sln
+            _kind = _sk(watchlist.get("sanctions"))
+        except Exception:
+            _kind, _sln = "unknown", (lambda v: str(v))
+        if _kind == "regulatory":
+            actions.append(f"REGULATORY DEBARMENT: name matches {_sln(watchlist.get('sanctions'))}. Obtain the SEBI/exchange "
+                           "order (date, entity, period) and confirm it refers to this person; this is a market/regulatory "
+                           "action, not an international sanctions designation.")
+            evidence_based.append("Regulatory debarment-list name match")
+        else:
+            actions.append("SANCTIONS: Subject matches an international sanctions list. Coordinate with compliance/national security units and verify designation reference.")
+            evidence_based.append("Sanctions-list match")
 
     for ev in evidence_list:
         if isinstance(ev, dict) and ev.get("type") == "WEAPON Detected":
@@ -1429,7 +1448,11 @@ def _analyze_network_evidence(ds_eng, network_text, suspect_name):
     # lets _looks_like_a_name's word-count check work as intended either
     # way, and also stops a legitimate short name from being silently
     # merged with a trailing descriptive clause.
-    associates = [a.strip() for a in re.split(r"[,;/]", network_text) if a.strip()]
+    try:  # p38: newline / 'Name - role' / 'A and B' aware
+        from analysis.report_rules import parse_network_names as _pnn
+        associates = [a["name"] for a in _pnn(network_text)]
+    except Exception:
+        associates = [a.strip() for a in re.split(r"[,;/\n]", network_text) if a.strip()]
     if not associates:
         return 0.0, [], "No valid associate names"
 

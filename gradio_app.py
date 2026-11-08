@@ -60,6 +60,11 @@ from analysis.reasoning import (
 )
 
 from investigator_integration import run_investigator_engine
+try:
+    from analysis.report_rules import sanction_kind as _p38_sk, sanction_list_name as _p38_sln
+except Exception:
+    _p38_sk = lambda v: "unknown"
+    _p38_sln = lambda v: str(v)
 from guidance_engine.engine import InvestigationGuidanceEngine, CaseContext, EvidenceItem, Hypothesis
 from guidance_engine.gradio_patch_ui import render_guidance_section
 
@@ -715,6 +720,11 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
     # ── TEXT EVIDENCE EXTRACTION (NER) ──────────────────────────────────────
     raw_text = f"{modus or ''} {suspect_name or ''} {location or ''}".strip()
     entities = ner_eng.extract(raw_text) if ner_eng.ready else {}
+    try:  # p38: agencies / companies / amounts from narrative + network field (no CRIME terms added)
+        from analysis.report_rules import supplement_entities as _rr_supp
+        entities = _rr_supp(f"{modus or ''}\n{network_text or ''}", entities)
+    except Exception as _e:
+        log.error(f"entity supplement error: {_e}")
     ner_sc = ner_eng.score(entities) if ner_eng.ready else 0.0
 
     # ─── DIGITAL EVIDENCE PROCESSING ──────────────────────────────────
@@ -1033,7 +1043,12 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         if "Interpol Red Corner Notice" not in crime_info["evidence_found"]:
             crime_info["evidence_found"].append("Interpol Red Corner Notice active")
 
-    if watchlist.get("sanctions") and "YES" in watchlist.get("sanctions", "NO") and not _wl_possible_only:
+    if watchlist.get("sanctions") and "YES" in watchlist.get("sanctions", "NO") and not _wl_possible_only \
+            and _p38_sk(watchlist.get("sanctions")) == "regulatory":
+        _note = f"Regulatory debarment-list name match: {_p38_sln(watchlist.get('sanctions'))} (identity unverified)"
+        if _note not in crime_info["evidence_found"]:
+            crime_info["evidence_found"].append(_note)
+    elif watchlist.get("sanctions") and "YES" in watchlist.get("sanctions", "NO") and not _wl_possible_only:
         crime_info["severity"] = "Critical"
         if "International sanctions-list match" not in crime_info["evidence_found"]:
             crime_info["evidence_found"].append("International sanctions-list match (e.g. UN Security Council)")
@@ -1044,6 +1059,22 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
 
     # ── NETWORK & FINANCIAL INTELLIGENCE (Naya System) ─────────────────────
     net_risk, net_matches, net_summary = _analyze_network_evidence(ds_eng, network_text, suspect_name)
+    # p38: names the investigator listed are associates of this case, whatever the datasets say
+    try:
+        from analysis.report_rules import parse_network_names as _pnn
+        _case_assoc = []
+        for _a in _pnn(network_text or ""):
+            if suspect_name and _a["name"].lower() == suspect_name.strip().lower():
+                continue
+            _hits = sorted({m["dataset"] for m in net_matches if m.get("query") == _a["name"] and m.get("strength") == "strong"})
+            _lbl = _a["name"] + (f" ({_a['role']})" if _a["role"] else "")
+            _lbl += (f" [dataset name-match: {', '.join(_hits)}]" if _hits else "")
+            _case_assoc.append(_lbl)
+        if _case_assoc:
+            watchlist["case_associates"] = _case_assoc
+            watchlist["known_associates"] = (list(watchlist.get("known_associates") or []) + _case_assoc)[:8]
+    except Exception as _e:
+        log.error(f"case associates error: {_e}")
     fin_risk, fin_flags = _analyze_financial_evidence(financial_ids, entities)
     veh_risk, veh_flags = _analyze_vehicle_evidence(vehicle_info, suspect_name)
 
@@ -1265,6 +1296,12 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         v_text = ("A dataset record matching this name carries an active Interpol Red Corner Notice. "
                   "IDENTITY CONFIDENCE IS 0% — this is an unverified name match, not a confirmed identification. "
                   "Coordinate with NCB immediately to independently verify before treating this as this person.")
+        watchlist_override = True
+    elif watchlist.get("sanctions") and "YES" in watchlist.get("sanctions", "NO") and _p38_sk(watchlist.get("sanctions")) == "regulatory":
+        v_icon, v_color, v_label = "🟠", "#f97316", "REGULATORY DEBARMENT NAME-MATCH — IDENTITY UNVERIFIED"
+        v_text = (f"A dataset record matching this name appears on {_p38_sln(watchlist.get('sanctions'))}, a market/"
+                  "regulatory debarment list (not an international sanctions designation). IDENTITY CONFIDENCE IS 0% — "
+                  "confirm with the underlying SEBI/exchange order (date, entity, period) that it refers to this person.")
         watchlist_override = True
     elif watchlist.get("sanctions") and "YES" in watchlist.get("sanctions", "NO"):
         v_icon, v_color, v_label = "🔴", "#ef4444", "POTENTIAL SANCTIONS NAME-MATCH — IDENTITY UNVERIFIED"
@@ -1632,7 +1669,7 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         f"    Database Match   : {dm_line}",
         f"    Criminal History : {_honest_negative(watchlist['criminal_history'])}",
         f"    Known Aliases    : {', '.join(watchlist.get('aliases', ['N/A'])[:3])} (names from same dataset search — may be different individuals, not verified as one person)",
-        f"    Associates       : {', '.join(watchlist.get('known_associates', ['N/A'])[:3])}",
+        f"    Associates       : {'; '.join(watchlist.get('known_associates') or ['N/A'])[:600]} (named in the case or found in datasets; association is as listed, not verified)",
         f"    Gang Affiliation : {watchlist.get('gang_affiliation', 'N/A')}",
         f"    PEP Status       : {watchlist.get('pep_status', 'N/A')} (name-match, identity unverified)",
         f"    Sanctions List   : {watchlist.get('sanctions', 'N/A')} (name-match, identity unverified)",

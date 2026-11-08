@@ -1,0 +1,121 @@
+{
+  "hypothesis_type": "accounting_fraud",
+  "name": "Accounting / Financial Statement Fraud",
+  "priority": 2,
+  "triggers": [
+    "balance sheet",
+    "books of account",
+    "falsified",
+    "fictitious",
+    "inflated cash",
+    "inflated revenue",
+    "inflated profits",
+    "fake invoices",
+    "forged bank statements",
+    "fixed deposit",
+    "accounting fraud",
+    "auditor",
+    "audit"
+  ],
+  "investigation_directions": [
+    {
+      "title": "Confirm cash and FD balances directly with banks",
+      "why": "Fictitious balances fail independent confirmation",
+      "search_targets": [
+        "Bank balance confirmations",
+        "FD receipts"
+      ],
+      "cross_match": [
+        "Book balance",
+        "Bank-confirmed balance"
+      ],
+      "expected_evidence_gain": 40,
+      "cost": "medium",
+      "time_estimate": "1-2 weeks",
+      "agencies_to_involve": [
+        "SFIO",
+        "CBI"
+      ]
+    },
+    {
+      "title": "Test revenue against customer invoices and receipts",
+      "why": "Fake invoices inflate revenue",
+      "search_targets": [
+        "Sales invoices",
+        "Customer confirmations",
+        "Receipts"
+      ],
+      "cross_match": [
+        "Invoice",
+        "Payment received"
+      ],
+      "expected_evidence_gain": 35,
+      "cost": "high",
+      "time_estimate": "2-4 weeks",
+      "agencies_to_involve": [
+        "SFIO"
+      ]
+    },
+    {
+      "title": "Review statutory auditor working papers",
+      "why": "Shows what was verified and what was relied on",
+      "search_targets": [
+        "Audit files",
+        "Management representation letters"
+      ],
+      "cross_match": [
+        "Audit evidence",
+        "Books"
+      ],
+      "expected_evidence_gain": 25,
+      "cost": "medium",
+      "time_estimate": "1-2 weeks",
+      "agencies_to_involve": [
+        "NFRA",
+        "ICAI",
+        "SEBI"
+      ]
+    },
+    {
+      "title": "Trace related-party transfers and promoter share sales",
+      "why": "Shows where value went and who gained",
+      "search_targets": [
+        "MCA filings",
+        "Bank statements of group firms",
+        "Depository records"
+      ],
+      "cross_match": [
+        "Dates",
+        "Amounts"
+      ],
+      "expected_evidence_gain": 30,
+      "cost": "high",
+      "time_estimate": "2-4 weeks",
+      "agencies_to_involve": [
+        "ED",
+        "SEBI"
+      ]
+    },
+    {
+      "title": "Record statements of finance staff, auditors and directors",
+      "why": "Establishes who knew and who acted",
+      "search_targets": [
+        "CFO",
+        "Finance team",
+        "Audit partners",
+        "Board members"
+      ],
+      "cross_match": [
+        "Statements",
+        "Documents"
+      ],
+      "expected_evidence_gain": 20,
+      "cost": "low",
+      "time_estimate": "1 week",
+      "agencies_to_involve": [
+        "CBI",
+        "SFIO"
+      ]
+    }
+  ]
+}
