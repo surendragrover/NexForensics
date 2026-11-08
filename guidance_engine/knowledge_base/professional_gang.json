@@ -1,0 +1,91 @@
+{
+  "hypothesis_type": "professional_gang",
+  "name": "Professional Organized Crime",
+  "priority": 1,
+  "triggers": [
+    "multiple suspects",
+    "coordinated action",
+    "professional equipment",
+    "thermal cutter",
+    "rf jammer",
+    "signal jammer",
+    "oxy-acetylene",
+    "team of",
+    "tactical",
+    "military",
+    "suppressed firearm",
+    "balaclava",
+    "night-vision",
+    "NVG",
+    "oxy-acetylene cutting torch",
+    "RF signal jammer",
+    "high-frequency",
+    "exfiltration",
+    "forcibly entered",
+    "security gate",
+    "breached",
+    "high-security",
+    "lockers",
+    "vault",
+    "commercial bank"
+  ],
+  "investigation_directions": [
+    {
+      "title": "Check known gang databases",
+      "why": "Professional MO matches known gang signatures",
+      "search_targets": [
+        "Interpol",
+        "NCRB",
+        "State Police Records"
+      ],
+      "cross_match": [
+        "MO signature",
+        "Location",
+        "Equipment used"
+      ],
+      "expected_evidence_gain": 25,
+      "cost": "low",
+      "time_estimate": "2-4 hours",
+      "agencies_to_involve": [
+        "Local Police",
+        "Crime Branch"
+      ],
+      "expected_documents": [
+        "Previous FIRs",
+        "Intelligence reports"
+      ],
+      "failure_conditions": [
+        "No matching MO found"
+      ],
+      "confidence_impact_confirmed": 15,
+      "confidence_impact_denied": -10
+    },
+    {
+      "title": "Analyze equipment supply chain",
+      "why": "Professional equipment has traceable source",
+      "search_targets": [
+        "Forensic analysis",
+        "Supplier records"
+      ],
+      "cross_match": [
+        "Tool marks",
+        "Serial numbers"
+      ],
+      "expected_evidence_gain": 20,
+      "cost": "medium",
+      "time_estimate": "1-2 days",
+      "agencies_to_involve": [
+        "Forensic Lab",
+        "FSL"
+      ],
+      "expected_documents": [
+        "Forensic report"
+      ],
+      "failure_conditions": [
+        "Equipment not recovered"
+      ],
+      "confidence_impact_confirmed": 12,
+      "confidence_impact_denied": -8
+    }
+  ]
+}

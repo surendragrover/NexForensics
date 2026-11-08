@@ -891,6 +891,12 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
 
     # ── NETWORK & WATCHLIST ───────────────────────────────────────────────
     watchlist = _lookup_suspect_background(ds_eng, suspect_name, entities)
+    # p41: an INTERPOL Red Notice record is not a sanctions designation
+    if "YES" in str(watchlist.get("sanctions", "")) and _p38_sk(watchlist.get("sanctions")) == "interpol":
+        watchlist["interpol"] = watchlist.get("interpol") if "YES" in str(watchlist.get("interpol", "")) else \
+            "YES — INTERPOL Red Notice record (name-match)"
+        watchlist["sanctions_note"] = f"Record source: {_p38_sln(watchlist.get('sanctions'))} (INTERPOL notice, not a sanctions designation)"
+        watchlist["sanctions"] = "NO"
 
     # ── STEP 2 — UNKNOWN CRIMINAL PROFILE (Agyat Apradhi) ───────────────────
     # A behavioural profile — never a name — built from Step 2 fields.
@@ -1023,23 +1029,27 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         for _c in [c for c in (watchlist.get("charges") or []) if c and c != "N/A"][:3]:
             crime_info["evidence_found"].append(f"Dataset record (POSSIBLE spelling-variant name match, identity unverified): {_c}")
     elif watchlist.get("charges") and watchlist.get("charges", ["N/A"])[0] != "N/A":
-        crime_info["primary"] = watchlist["charges"][0] if watchlist["charges"] else crime_info["primary"]
-        if len(watchlist.get("charges", [])) > 1:
-            crime_info["secondary"] = ", ".join(watchlist["charges"][1:3])
-        crime_info["all_crimes"] = watchlist.get("charges", crime_info.get("all_crimes", []))
-        crime_info["severity"] = "Critical"
-        crime_info["statutes"] = " | ".join(watchlist.get("charges", []))
+        # p41: dataset charges are a NAME-MATCH note; they never replace the crimes and
+        # statutes classified from this case's own narrative.
+        for _c in [c for c in watchlist.get("charges", []) if c and c != "N/A"][:3]:
+            crime_info["evidence_found"].append(f"Dataset record (name-match, identity unverified): {_c}")
+        if crime_info.get("primary", "").startswith("Under Investigation"):
+            crime_info["primary"] = f"Under Investigation (dataset name-match lists: {watchlist['charges'][0]})"
+        crime_info["severity"] = max(crime_info.get("severity", "Low"), "High",
+                                     key=lambda x: ["Low", "Medium", "High", "Critical"].index(x) if x in ["Low", "Medium", "High", "Critical"] else 0)
         if watchlist.get("enforcement_actions") and watchlist["enforcement_actions"][0] != "N/A":
             crime_info["evidence_found"].extend(watchlist["enforcement_actions"][:3])
 
     if watchlist.get("status", "").startswith("FUGITIVE") and not _wl_possible_only:
-        crime_info["severity"] = "Critical"
-        crime_info["primary"] = f"FUGITIVE — {crime_info['primary']}"
+        crime_info["severity"] = max(crime_info.get("severity", "Low"), "High",
+                                     key=lambda x: ["Low", "Medium", "High", "Critical"].index(x) if x in ["Low", "Medium", "High", "Critical"] else 0)
+        # p41: fugitive status is a name-match note, not part of the crime label
         if "Absconding" not in crime_info["evidence_found"]:
             crime_info["evidence_found"].append(f"Subject absconding since {watchlist.get('status', '').split('since')[-1].strip() if 'since' in watchlist.get('status', '') else 'unknown date'}")
 
     if watchlist.get("interpol") and "YES" in watchlist.get("interpol", "NO") and not _wl_possible_only:
-        crime_info["severity"] = "Critical"
+        crime_info["severity"] = max(crime_info.get("severity", "Low"), "High",
+                                     key=lambda x: ["Low", "Medium", "High", "Critical"].index(x) if x in ["Low", "Medium", "High", "Critical"] else 0)
         if "Interpol Red Corner Notice" not in crime_info["evidence_found"]:
             crime_info["evidence_found"].append("Interpol Red Corner Notice active")
 
@@ -1185,6 +1195,21 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         "priority_boost": priority_boost,
         "base_risk": round(base_risk, 1),
     }
+    # p41: with no validated risk model, case risk comes from crime-severity rules
+    _p41_risk_label = None
+    if risk_is_heuristic:
+        try:
+            from analysis.report_rules import crime_risk_from_rules as _crr
+            _cr, _cr_basis, _p41_risk_label = _crr(crime_info.get("all_crimes", []), modus or "", entities, watchlist)
+            if _cr > 0:
+                risk = _cr
+                risk_breakdown = {"rule_based": True, "score": _cr, "basis": _cr_basis,
+                                  "note": "crime-severity rules (analysis/report_rules.json crime_risk_rules); case priority not used"}
+            else:
+                _p41_risk_label = None
+        except Exception as _e:
+            log.error(f"crime risk rules error: {_e}")
+            _p41_risk_label = None
     # ─── END RISK EXPLANATION ──────────────────────────────────────────────
 
 
@@ -1372,6 +1397,8 @@ def run_analysis(case_id, modus, suspect_name, location, photo, voice_clip, id_d
         # p27: a watchlist name hit raises case risk only; it is not evidence of deception
         risk = max(risk, 88.0)
     risk_disp = _rr_risk_display(risk, not risk_is_heuristic, crime_info.get("severity"))
+    if _p41_risk_label:
+        risk_disp = _p41_risk_label
 
     # ── BUILD UI HTML (Evidence-Focused) ──────────────────────────────────
     def bar(label, val, col, width=100):

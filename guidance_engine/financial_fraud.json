@@ -1,0 +1,59 @@
+{
+  "kb_name": "Financial Fraud Investigation Knowledge Base",
+  "version": "2.0",
+  "rules": [
+    {
+      "rule_id": "FF-001",
+      "name": "Multi-Channel Financial Tracking",
+      "conditions": [
+        {"field": "hypothesis", "hypothesis_name": "financial_fraud", "operator": "gt", "value": 0.50, "logic": "AND"}
+      ],
+      "base_likelihood": 70,
+      "direction": {
+        "title": "Expand Financial Investigation to All Channels",
+        "description": "When direct financial evidence is absent, investigate banking records, UPI transaction trails, cryptocurrency wallets, hawala networks, and bullion dealers. Professional fraudsters often use layered financial obfuscation.",
+        "trigger": "Financial-fraud hypothesis is active; the visible financial evidence (if any) is only a fragment of the likely full trail.",
+        "search_targets": ["Bank statements", "UPI transaction logs", "Crypto wallet addresses", "Hawala ledgers", "Bullion/jewellery purchase records"],
+        "cross_match": ["Transaction counterparties against suspect/associate names", "Timing of transfers against the incident timeline"],
+        "expected_outcome": "Maps the full money trail across channels, revealing counterparties, off-ramps, and the scale of the operation.",
+        "cost": "Very High",
+        "time_estimate": "48-72 Hours",
+        "expected_gain": 25.0,
+        "confidence_impact": {"if_confirmed": 20, "if_denied": -12},
+        "legal_difficulty": "High",
+        "resources": ["Banking Network Access", "UPI Transaction Database", "Blockchain Analytics", "Hawala Informant Network", "Bullion Dealer Registry"],
+        "documents": ["Bank Statements", "UPI Transaction Logs", "Crypto Wallet Addresses", "Hawala Ledgers", "Bullion Purchase Records"],
+        "agencies": ["Financial Intelligence Unit", "Income Tax Department", "Enforcement Directorate", "Cyber Crime Unit"],
+        "failure_conditions": ["Cash-only transactions", "Cross-border hawala", "Privacy coin usage", "Shell company layering"]
+      },
+      "why_template": "Financial fraud hypothesis is active — expanding to all financial channels is essential as perpetrators often use multiple obfuscation layers."
+    },
+    {
+      "rule_id": "FF-002",
+      "name": "Cryptocurrency Wallet Trail",
+      "conditions": [
+        {"field": "hypothesis", "hypothesis_name": "financial_fraud", "operator": "gt", "value": 0.35, "logic": "OR"},
+        {"field": "evidence", "evidence_type": "financial", "operator": "exists", "value": true, "logic": "OR"}
+      ],
+      "base_likelihood": 55,
+      "direction": {
+        "title": "Trace Cryptocurrency Wallet & Off-Ramp",
+        "description": "A crypto wallet or QR code found in case evidence is a distinct, high-value lead in its own right. Walk the transaction graph from the wallet to its counterparties and identify where funds were converted back to cash (exchange, P2P off-ramp, or physical bullion).",
+        "trigger": "A crypto wallet address, QR code, or exchange reference appears anywhere in the case evidence.",
+        "search_targets": ["Blockchain transaction graph", "Known exchange KYC records", "P2P off-ramp platforms"],
+        "cross_match": ["Wallet counterparties against suspect/associate identities", "Off-ramp KYC identity against case suspects"],
+        "expected_outcome": "Identifies the real-world identity behind the wallet at the point it touches a regulated exchange or KYC'd counterparty.",
+        "cost": "High",
+        "time_estimate": "1-3 Days",
+        "expected_gain": 16.0,
+        "confidence_impact": {"if_confirmed": 16, "if_denied": -6},
+        "legal_difficulty": "High",
+        "resources": ["Blockchain Analytics Platform", "Exchange Liaison / Legal Request"],
+        "documents": ["Wallet Transaction Graph", "Exchange KYC Records"],
+        "agencies": ["Cyber Crime Unit", "Enforcement Directorate"],
+        "failure_conditions": ["Privacy-coin usage", "No KYC off-ramp used", "Funds still dormant in wallet"]
+      },
+      "why_template": "A crypto wallet reference in the evidence is a self-contained investigation lead — it either resolves to a KYC'd identity or confirms the money never left the crypto ecosystem."
+    }
+  ]
+}

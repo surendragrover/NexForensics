@@ -1,0 +1,92 @@
+{
+  "hypothesis_type": "financial_fraud_bank_instrument",
+  "name": "Bank Guarantee / LoU Fraud",
+  "priority": 2,
+  "triggers": [
+    "letter of undertaking",
+    "letters of undertaking",
+    "lou",
+    "swift",
+    "core banking",
+    "buyer's credit",
+    "bank guarantee"
+  ],
+  "investigation_directions": [
+    {
+      "title": "Reconcile branch SWIFT messages with core banking entries",
+      "why": "Unrecorded LoUs show up only in SWIFT",
+      "search_targets": [
+        "SWIFT logs",
+        "CBS entries"
+      ],
+      "cross_match": [
+        "Message reference",
+        "Amount",
+        "Date"
+      ],
+      "expected_evidence_gain": 40,
+      "cost": "medium",
+      "time_estimate": "1-2 weeks",
+      "agencies_to_involve": [
+        "CBI",
+        "RBI"
+      ]
+    },
+    {
+      "title": "Obtain buyer's credit records from the overseas branches",
+      "why": "Shows money released on each LoU",
+      "search_targets": [
+        "Overseas branch ledgers",
+        "Nostro accounts"
+      ],
+      "cross_match": [
+        "LoU number",
+        "Beneficiary"
+      ],
+      "expected_evidence_gain": 35,
+      "cost": "high",
+      "time_estimate": "2-4 weeks",
+      "agencies_to_involve": [
+        "CBI",
+        "ED"
+      ]
+    },
+    {
+      "title": "Trace officials' user IDs, access logs and assets",
+      "why": "Identifies who issued the messages and any bribes",
+      "search_targets": [
+        "SWIFT user logs",
+        "Officials' bank accounts"
+      ],
+      "cross_match": [
+        "User ID",
+        "Payments"
+      ],
+      "expected_evidence_gain": 30,
+      "cost": "medium",
+      "time_estimate": "1-2 weeks",
+      "agencies_to_involve": [
+        "CBI"
+      ]
+    },
+    {
+      "title": "Trace funds through shell entities abroad",
+      "why": "Where the credit ended up",
+      "search_targets": [
+        "Foreign company registries",
+        "Bank statements"
+      ],
+      "cross_match": [
+        "Directors",
+        "Transfers"
+      ],
+      "expected_evidence_gain": 30,
+      "cost": "high",
+      "time_estimate": "4+ weeks",
+      "agencies_to_involve": [
+        "ED",
+        "Interpol"
+      ]
+    }
+  ]
+}

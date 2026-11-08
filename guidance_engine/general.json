@@ -1,0 +1,106 @@
+{
+  "kb_name": "General / Cross-Cutting Investigation Knowledge Base",
+  "version": "2.0",
+  "rules": [
+    {
+      "rule_id": "GEN-001",
+      "name": "General Evidence Correlation",
+      "conditions": [
+        {"field": "evidence", "evidence_type": "face", "operator": "exists", "value": true, "logic": "AND"}
+      ],
+      "base_likelihood": 60,
+      "direction": {
+        "title": "Expand Facial Recognition Search",
+        "description": "Cross-reference detected faces against criminal databases, social media, and recent arrest records. Even partial matches can reveal associates or prior convictions.",
+        "trigger": "A usable face is present in case evidence (photo/CCTV still).",
+        "search_targets": ["Criminal database", "Social media reverse-image search", "Recent arrest records"],
+        "cross_match": ["Face match candidates against other suspects/associates named in this case"],
+        "expected_outcome": "Either an identity match, or a confirmed dead-end that rules out the 'known offender' angle and strengthens other hypotheses.",
+        "cost": "Low",
+        "time_estimate": "2-4 Hours",
+        "expected_gain": 12.0,
+        "confidence_impact": {"if_confirmed": 12, "if_denied": -5},
+        "legal_difficulty": "Low",
+        "resources": ["Criminal Database Access", "Social Media Analysis Tools", "CCTV Network"],
+        "documents": ["Face Match Reports", "Criminal History Records"],
+        "agencies": ["Local Police", "Cyber Crime Unit"],
+        "failure_conditions": ["First-time offender not in database", "Poor image quality", "Disguise used"]
+      },
+      "why_template": "Face evidence exists in case — facial recognition is the fastest path to identifying suspects or their associates."
+    },
+    {
+      "rule_id": "GEN-002",
+      "name": "Digital / Destroyed-Storage Forensics",
+      "conditions": [],
+      "base_likelihood": 45,
+      "direction": {
+        "title": "Recover & Forensically Analyse Destroyed/Wiped Digital Storage",
+        "description": "If any device or storage medium was chemically destroyed, wiped, or physically damaged, identify exactly which devices, what data they likely held, whether a backup or cloud copy exists, and who had access before/after the destruction event.",
+        "trigger": "Evidence or case notes reference destroyed, wiped, or tampered digital storage/devices.",
+        "search_targets": ["Device inventory / asset register", "Cloud backup accounts tied to those devices", "Access logs immediately before and after the destruction event"],
+        "cross_match": ["Pre/post-destruction access log against employee/suspect list", "Backup content against what's now missing from the scene"],
+        "expected_outcome": "Recovers a backup or partial data trail even when the primary device is destroyed, and identifies who had access at the time of destruction — a strong pointer toward insider involvement if internal access was required.",
+        "cost": "Medium",
+        "time_estimate": "1-2 Days",
+        "expected_gain": 14.0,
+        "confidence_impact": {"if_confirmed": 14, "if_denied": -6},
+        "legal_difficulty": "Medium",
+        "resources": ["Digital Forensics Lab", "Cloud Service Legal Request", "IT/Asset Management Records"],
+        "documents": ["Device Inventory", "Backup Recovery Report", "Access Logs"],
+        "agencies": ["Cyber Crime Unit", "IT/Digital Forensics"],
+        "failure_conditions": ["No backup existed", "Cloud sync was disabled", "Destruction method left nothing recoverable"]
+      },
+      "why_template": "Destroyed digital evidence is itself a lead — recovering even a partial backup, or identifying who had access when it was destroyed, can be as valuable as the original data."
+    },
+    {
+      "rule_id": "GEN-003",
+      "name": "Telecom & Communications Pattern Analysis",
+      "conditions": [],
+      "base_likelihood": 40,
+      "direction": {
+        "title": "Analyse Telecom / Radio Communication Pattern",
+        "description": "If the scene shows coordinated behaviour (hand signals, short radio bursts, synchronised movement), pull lawfully available telecom records for the incident window and area: tower dumps, unusual/unregistered devices (burner phones), and any encrypted-app usage indicators.",
+        "trigger": "Evidence indicates coordinated multi-person activity (team movement, signalling, timed actions) suggesting real-time communication.",
+        "search_targets": ["Tower dump for the incident window and radius", "Unregistered/burner IMEI activity", "Encrypted-app usage indicators where lawfully accessible"],
+        "cross_match": ["Active devices in the window against known suspect numbers", "Device movement pattern against the vehicle/escape route"],
+        "expected_outcome": "Surfaces unidentified devices active only during the incident window — a strong signature of a coordinated, planned operation versus a lone or opportunistic actor.",
+        "cost": "Medium",
+        "time_estimate": "6-12 Hours",
+        "expected_gain": 13.0,
+        "confidence_impact": {"if_confirmed": 13, "if_denied": -5},
+        "legal_difficulty": "Medium",
+        "resources": ["Telecom Tower Dump (lawful request)", "IMEI Registry"],
+        "documents": ["Tower Dump Records", "Device Activity Timeline"],
+        "agencies": ["Cyber Crime Unit", "Telecom Enforcement Cell"],
+        "failure_conditions": ["No coordinated-behaviour evidence", "Devices used pre-paid/unregistered SIMs only", "Encrypted app content not lawfully accessible"]
+      },
+      "why_template": "Coordinated behaviour at the scene implies real-time communication — even without content access, device presence patterns alone can confirm or rule out a team operation."
+    },
+    {
+      "rule_id": "GEN-004",
+      "name": "Financial / Digital Trail Check (cross-hypothesis)",
+      "conditions": [
+        {"field": "evidence", "evidence_type": "financial", "operator": "exists", "value": true, "logic": "AND"}
+      ],
+      "base_likelihood": 50,
+      "direction": {
+        "title": "Check Financial Trail Even If Motive Isn't Primarily Financial",
+        "description": "Financial evidence (wallet, transaction reference, payment record) exists even though the leading hypothesis isn't financial fraud. Run a lighter-weight financial trace to see whether it's a procurement trail (equipment/vehicle purchase) rather than the primary motive.",
+        "trigger": "Financial evidence exists in the case but no financial-fraud hypothesis is currently in the top-ranked list.",
+        "search_targets": ["Bank/UPI records tied to the referenced account or wallet", "Recent large or unusual transactions near the incident date"],
+        "cross_match": ["Transaction counterparties against suspects from the leading hypothesis", "Transaction timing against procurement leads (e.g. equipment vendors)"],
+        "expected_outcome": "Either confirms the financial trail is procurement-related (supporting the leading hypothesis) or surfaces a separate financial motive worth its own hypothesis.",
+        "cost": "Medium",
+        "time_estimate": "4-8 Hours",
+        "expected_gain": 11.0,
+        "confidence_impact": {"if_confirmed": 11, "if_denied": -4},
+        "legal_difficulty": "Medium",
+        "resources": ["Banking/UPI Records Access"],
+        "documents": ["Transaction Statements"],
+        "agencies": ["Financial Intelligence Unit"],
+        "failure_conditions": ["Account/wallet ownership can't be resolved", "No unusual transactions near incident date"]
+      },
+      "why_template": "Financial evidence exists but isn't yet the leading theory — a light-weight check avoids missing a procurement or secondary-motive trail."
+    }
+  ]
+}

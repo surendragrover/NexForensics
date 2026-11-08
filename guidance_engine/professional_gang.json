@@ -1,0 +1,113 @@
+{
+  "kb_name": "Professional Gang Investigation Knowledge Base",
+  "version": "2.0",
+  "rules": [
+    {
+      "rule_id": "PG-001",
+      "name": "Industrial Torch Vendor Investigation",
+      "conditions": [
+        {"field": "hypothesis", "hypothesis_name": "professional_gang", "operator": "gt", "value": 0.7, "logic": "AND"},
+        {"field": "evidence", "evidence_type": "document", "operator": "exists", "value": true, "logic": "AND"}
+      ],
+      "base_likelihood": 85,
+      "direction": {
+        "title": "Investigate Industrial Torch / Cutting Equipment Vendors",
+        "description": "Query registered industrial cutting equipment vendors within 100km radius. Professional gangs typically source oxy-acetylene torches, plasma cutters, and angle grinders from legitimate suppliers using shell companies or stolen identities.",
+        "trigger": "Professional gang hypothesis is strong and specialised cutting/entry technique is indicated by the scene evidence.",
+        "search_targets": ["Local Industrial Supplier Registry", "GST/VAT Purchase Records", "Rental Equipment Logs", "Shell Company Database"],
+        "cross_match": ["Purchase/rental records against known associates", "Delivery addresses against suspect locations", "Payment trail against financial evidence"],
+        "expected_outcome": "Identifies the procurement or rental trail for the cutting equipment used at the scene, and any names/companies behind it.",
+        "cost": "Medium",
+        "time_estimate": "6-8 Hours",
+        "expected_gain": 18.0,
+        "confidence_impact": {"if_confirmed": 18, "if_denied": -9},
+        "legal_difficulty": "Low",
+        "resources": ["Local Industrial Supplier Registry", "GST/VAT Records", "Shell Company Database"],
+        "documents": ["Purchase Orders", "Delivery Receipts", "Payment Records", "Company Registration Documents"],
+        "agencies": ["Local Police Economic Offences Wing", "Tax Intelligence Unit"],
+        "failure_conditions": ["Equipment purchased through black market", "Vendor records destroyed", "Cross-border procurement"]
+      },
+      "why_template": "Professional gang hypothesis is strong and document evidence exists — suggesting organized procurement of industrial equipment through registered channels."
+    },
+    {
+      "rule_id": "PG-002",
+      "name": "Vehicle Movement Analysis",
+      "conditions": [
+        {"field": "hypothesis", "hypothesis_name": "professional_gang", "operator": "gt", "value": 0.6, "logic": "AND"},
+        {"field": "evidence", "evidence_type": "vehicle", "operator": "exists", "value": true, "logic": "AND"}
+      ],
+      "base_likelihood": 78,
+      "direction": {
+        "title": "Multi-Source Vehicle Tracking",
+        "description": "Correlate vehicle movements using FASTag toll data, ANPR systems, fuel pump CCTV, GPS breadcrumbs, and highway surveillance cameras. Professional gangs often use stolen or cloned vehicles.",
+        "trigger": "A vehicle (stolen/forged plates, unregistered, or unusual) is tied to the scene or escape and the professional-gang hypothesis is above 60%.",
+        "search_targets": ["FASTag Database", "ANPR Network", "Highway CCTV", "Fuel Station CCTV/receipts", "Vehicle theft/forgery registers"],
+        "cross_match": ["Plate/VIN against theft records", "Toll timestamps against incident timeline", "Fuel stops against known safe-house areas"],
+        "expected_outcome": "Reconstructs the vehicle's route before and after the incident, narrowing down escape direction and possible drop points.",
+        "cost": "High",
+        "time_estimate": "12-24 Hours",
+        "expected_gain": 22.0,
+        "confidence_impact": {"if_confirmed": 19, "if_denied": -11},
+        "legal_difficulty": "Medium",
+        "resources": ["FASTag Database Access", "ANPR Network", "Highway CCTV Footage", "Fuel Station Records"],
+        "documents": ["Toll Transaction Logs", "ANPR Capture Images", "Fuel Purchase Receipts", "Vehicle Registration Documents"],
+        "agencies": ["Traffic Police", "Highway Patrol", "Regional Transport Office"],
+        "failure_conditions": ["Vehicle using cloned plates", "No FASTag installed", "Rural route avoidance"]
+      },
+      "why_template": "Vehicle evidence detected with professional gang hypothesis above 60% — multi-source tracking can reveal escape routes, safe houses, and accomplice networks."
+    },
+    {
+      "rule_id": "PG-003",
+      "name": "Specialised Equipment Procurement (RF Jammer / Tactical Gear)",
+      "conditions": [
+        {"field": "hypothesis", "hypothesis_name": "professional_gang", "operator": "gt", "value": 0.65, "logic": "AND"}
+      ],
+      "base_likelihood": 70,
+      "direction": {
+        "title": "Trace RF Jammer / Tactical Equipment Procurement",
+        "description": "RF jammers, suppressors, and tactical communication gear are not everyday-market items — sourcing one is itself a procurement lead, not just a weapon. Trace vendor, purchaser, payment, and delivery for any such equipment referenced in the scene evidence.",
+        "trigger": "Professional-gang hypothesis is strong and scene evidence indicates specialised/tactical equipment (signal jamming, suppressed weapons, coordinated team gear) rather than opportunistic tools.",
+        "search_targets": ["Licensed jammer/security-equipment dealers", "Import/customs records", "Online marketplace seller logs", "Payment gateway records tied to such purchases"],
+        "cross_match": ["Purchaser identity against suspect/associate database", "Delivery address against known locations", "Payment method against financial evidence"],
+        "expected_outcome": "Identifies who acquired the specialised equipment and how, often surfacing a name, phone number, or delivery address linked to the team.",
+        "cost": "Medium",
+        "time_estimate": "8-12 Hours",
+        "expected_gain": 15.0,
+        "confidence_impact": {"if_confirmed": 15, "if_denied": -7},
+        "legal_difficulty": "Medium",
+        "resources": ["Licensed Dealer Registry", "Customs/Import Records", "E-commerce Seller Logs"],
+        "documents": ["Purchase/Import Records", "Payment Gateway Logs", "Delivery Manifests"],
+        "agencies": ["Cyber Crime Unit", "Customs Intelligence", "Local Police"],
+        "failure_conditions": ["Equipment sourced from black market", "Cash-only untraceable purchase", "Cross-border acquisition"]
+      },
+      "why_template": "Specialised/tactical equipment implies a deliberate procurement step — tracing it is often faster than tracing the crime itself."
+    },
+    {
+      "rule_id": "PG-004",
+      "name": "Escape Route Reconstruction",
+      "conditions": [
+        {"field": "hypothesis", "hypothesis_name": "professional_gang", "operator": "gt", "value": 0.55, "logic": "AND"},
+        {"field": "evidence", "evidence_type": "vehicle", "operator": "exists", "value": true, "logic": "AND"}
+      ],
+      "base_likelihood": 68,
+      "direction": {
+        "title": "Reconstruct Escape Route (Scene → Last Known Point)",
+        "description": "Build a geographic timeline from the last confirmed scene sighting to the vehicle's last known location: road network, CCTV/ANPR chokepoints, fuel stops, bridges/tollways, and any abandonment or hand-off site.",
+        "trigger": "A clear exit event exists in the timeline (e.g. vehicle departure, device/GPS loss) but the route beyond that point is still unknown.",
+        "search_targets": ["Road-network CCTV/ANPR chokepoints", "Toll plazas", "Fuel stations along likely corridors", "Vehicle abandonment/scrap-yard reports"],
+        "cross_match": ["Timestamp of exit against camera timestamps along candidate routes", "Abandonment site against known associate addresses"],
+        "expected_outcome": "Narrows the search area for the team's safe house or onward transport, and may recover the vehicle itself as physical evidence.",
+        "cost": "High",
+        "time_estimate": "1-2 Days",
+        "expected_gain": 17.0,
+        "confidence_impact": {"if_confirmed": 14, "if_denied": -6},
+        "legal_difficulty": "Low",
+        "resources": ["Highway/City CCTV Network", "ANPR Corridor Data", "Local Police Beat Reports"],
+        "documents": ["Route Timeline", "Camera Capture Log", "Abandonment/Recovery Report"],
+        "agencies": ["Traffic Police", "Local Police", "Highway Patrol"],
+        "failure_conditions": ["No cameras along the escape corridor", "Vehicle switched mid-route", "Extended time gap before search began"]
+      },
+      "why_template": "The timeline shows a clear exit point but the route afterward is unresolved — this is a distinct, high-value investigation direction in its own right, not just evidence collection."
+    }
+  ]
+}

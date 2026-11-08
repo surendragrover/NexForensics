@@ -334,11 +334,19 @@ def is_financial_case(crime_category: str, crimes: list[dict]) -> bool:
 
 def next_evidence_for(crime_category: str, crimes: list[dict], evidence_provided: dict | None = None) -> list[dict] | None:
     """Crime-type aware list; None means 'use the generic checklist'."""
-    if not is_financial_case(crime_category, crimes):
+    _bc0 = (RULES.get("next_evidence", {}) or {}).get("by_crime", {}) or {}
+    _typed_hit = any((c.get("crime") if isinstance(c, dict) else c) in _bc0 for c in (crimes or []))
+    if not _typed_hit and not is_financial_case(crime_category, crimes):
         return None
     ev = evidence_provided or {}
     out = []
-    _key = "accounting" if is_accounting_case(crimes) else "financial"
+    _key = "financial"
+    _bc = (RULES.get("next_evidence", {}) or {}).get("by_crime", {}) or {}
+    for _c in crimes or []:
+        _n = _c.get("crime") if isinstance(_c, dict) else _c
+        if _n in _bc:
+            _key = _bc[_n]
+            break
     for pr, rec, why in (RULES.get("next_evidence", {}) or {}).get(_key, []):
         if rec.lower().startswith("photo") and ev.get("photo") and ev.get("document"):
             continue
@@ -374,7 +382,8 @@ _DATE_RX = re.compile(
     r"\b(\d{4}-\d{2}-\d{2}|\d{1,2}[/.-]\d{1,2}[/.-](?:19|20)\d{2}"
     r"|\d{1,2}(?:st|nd|rd|th)?\s+(?:" + _MONTHS + r")[a-z]*\.?,?\s+(?:19|20)\d{2}"
     r"|(?:" + _MONTHS + r")[a-z]*\.?\s+\d{1,2},?\s+(?:19|20)\d{2}"
-    r"|(?:in|since|during|from|by)\s+(?:(?:" + _MONTHS + r")[a-z]*\s+)?(?:19|20)\d{2})\b", re.I)
+    r"|(?:between|from)\s+(?:about\s+)?(?:19|20)\d{2}\s+(?:and|to|-)\s+(?:19|20)\d{2}"
+    r"|(?:in|since|during|from|by|of|until|till)\s+(?:(?:" + _MONTHS + r")[a-z]*\s+)?(?:19|20)\d{2})\b", re.I)
 
 
 def dated_statements(modus: str, limit: int = 12) -> list[dict]:
@@ -447,6 +456,9 @@ def sanction_kind(value: str) -> str:
     if suf:
         v = v.replace(suf, "")
     low = v.lower()
+    if any(m in low for m in cfg.get("interpol_markers", [])) and not any(
+            m in low for m in cfg.get("international_markers", []) if m not in ("consolidated list",)):
+        return "interpol"
     if any(m in low for m in cfg.get("international_markers", [])):
         return "international"
     if any(re.search(r"(?<![a-z])" + re.escape(m) + r"(?![a-z])", low) for m in cfg.get("regulatory_markers", [])):
@@ -573,3 +585,65 @@ def financial_risk_from_rules(crimes_all, narrative: str = "", watchlist: dict |
         score = float(cfg.get("floor_if_financial_crime", 40))
         basis.append(f"floor for an alleged financial offence ({score:g})")
     return round(min(score, float(cfg.get("cap", 95))), 1), basis
+
+
+# ── p41 (2026-11-08): case risk from crime severity (all crime types) ────────
+def crime_risk_from_rules(crimes_all, narrative: str = "", entities: dict | None = None,
+                          watchlist: dict | None = None) -> tuple[float, list[str], str]:
+    cfg = RULES.get("crime_risk_rules", {}) or {}
+    base = cfg.get("base", [])
+    names = list(dict.fromkeys(c.get("crime") if isinstance(c, dict) else str(c) for c in (crimes_all or [])))
+    scored = []
+    for n in names:
+        low = n.lower()
+        best = max((p for m, p in base if m in low), default=None)
+        if best is not None:
+            scored.append((best, n))
+    scored.sort(reverse=True)
+    basis = []
+    if scored:
+        score = float(scored[0][0])
+        basis.append(f"{scored[0][1]} {scored[0][0]}")
+        extra = min(len(scored) - 1, 99) * int(cfg.get("extra_crime_points", 5))
+        extra = min(extra, int(cfg.get("extra_crime_cap", 15)))
+        if extra:
+            score += extra
+            basis.append(f"{len(scored) - 1} more offence type(s) +{extra}")
+    else:
+        score = 0.0
+    md = cfg.get("modifiers", {}) or {}
+    low = (narrative or "").lower()
+    ents = entities or {}
+    wl = watchlist or {}
+    if ents.get("WEAPON"):
+        score += md.get("weapon_entities", 10)
+        basis.append(f"weapon mentioned +{md.get('weapon_entities', 10)}")
+    fr = RULES.get("financial_risk_rules", {}) or {}
+    if any(k in low for k in fr.get("absconding_keywords", [])):
+        score += md.get("absconding", 10)
+        basis.append(f"absconding/fled +{md.get('absconding', 10)}")
+    amt = _amount_crore(narrative)
+    if amt >= 1000:
+        score += md.get("amount_1000_crore", 10)
+        basis.append(f"amount Rs {amt:,.0f} crore +{md.get('amount_1000_crore', 10)}")
+    elif amt >= 100:
+        score += md.get("amount_100_crore", 5)
+        basis.append(f"amount Rs {amt:,.0f} crore +{md.get('amount_100_crore', 5)}")
+    if any(k in low for k in md.get("organised_keywords", [])):
+        score += md.get("organised", 5)
+        basis.append(f"organised/shell-entity language +{md.get('organised', 5)}")
+    if any(k in low for k in md.get("multiple_victims_keywords", [])):
+        score += md.get("multiple_victims", 5)
+        basis.append(f"many victims/investors +{md.get('multiple_victims', 5)}")
+    if str(wl.get("status", "")).startswith("FUGITIVE") or "YES" in str(wl.get("interpol", "")):
+        score += md.get("fugitive_or_interpol_name_match", 5)
+        basis.append(f"fugitive/Interpol name-match, unverified +{md.get('fugitive_or_interpol_name_match', 5)}")
+    score = round(min(score, float(cfg.get("cap", 95))), 1)
+    band = "Low"
+    for thr, lab in cfg.get("bands", [[70, "High"], [40, "Medium"], [0, "Low"]]):
+        if score >= thr:
+            band = lab
+            break
+    label = cfg.get("label", "{band} ({score:.0f}/100)").format(band=band, score=score,
+                                                                basis="; ".join(basis) or "no classified crime")
+    return score, basis, label

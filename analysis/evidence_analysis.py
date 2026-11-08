@@ -204,6 +204,7 @@ def _classify_crime_from_evidence(entities, modus, suspect_name, ocr_text, face_
     if ocr_text and len(ocr_text) < 10:
         evidence_found.append("Document barely readable — possible forgery/tampering")
 
+    crimes_detected = list(dict.fromkeys(crimes_detected))  # p42: no duplicate crime names
     if not crimes_detected:
         crimes_detected = ["Under Investigation — No Specific Crime Pattern Detected"]
         evidence_found.append("Insufficient evidence for crime classification")
@@ -735,8 +736,10 @@ def _assess_threat_from_evidence(deception, risk, crime_info, fraud_indicators, 
     # and case priority measure seriousness/urgency, not physical danger.
     try:
         from analysis.report_rules import is_white_collar as _iwc
-        if _iwc(crime_info.get("all_crimes", [])) and not str(watchlist.get("status", "")).startswith(("FUGITIVE", "TERRORISM")):
-            public = "LOW — non-violent financial offence; no physical-safety evidence on file"
+        if _iwc(crime_info.get("all_crimes", [])) and not str(watchlist.get("status", "")).startswith("TERRORISM"):
+            public = ("LOW — non-violent financial offence; absconding/fugitive name-match is a flight risk, "
+                      "not a physical-safety threat" if str(watchlist.get("status", "")).startswith("FUGITIVE")
+                      else "LOW — non-violent financial offence; no physical-safety evidence on file")
     except Exception:
         pass
     # ─── END CASE PRIORITY OVERRIDE ──────────────────────────────────────
@@ -864,7 +867,9 @@ def _generate_actions_from_evidence(crime_info, fraud_indicators, watchlist, thr
             _kind = _sk(watchlist.get("sanctions"))
         except Exception:
             _kind, _sln = "unknown", (lambda v: str(v))
-        if _kind == "regulatory":
+        if _kind == "interpol":
+            pass  # p41: an INTERPOL notice is handled by the INTERPOL action, not as a sanctions designation
+        elif _kind == "regulatory":
             actions.append(f"REGULATORY DEBARMENT: name matches {_sln(watchlist.get('sanctions'))}. Obtain the SEBI/exchange "
                            "order (date, entity, period) and confirm it refers to this person; this is a market/regulatory "
                            "action, not an international sanctions designation.")
@@ -1198,6 +1203,15 @@ def _lookup_suspect_background(ds_eng, suspect_name, entities):
                                   else _tier_label if variant_rows else "WEAK")
     result["identity_confidence"] = "0% (name/alias string match only; identity not resolved)"
 
+    if weak_rows and (strong_rows or partial_rows):
+        # p41: with a strong/partial match, drop weak rows that share only the surname
+        try:
+            from analysis.report_rules import name_tokens as _nt
+            _q = _nt(name)
+            _given = set(_q[:-1]) if len(_q) > 1 else set(_q)
+            weak_rows = [r for r in weak_rows if _given & set(_nt(r.get("entity_name") or ""))]
+        except Exception:
+            pass
     if weak_rows:
         result["weak_matches_for_review"] = [
             f"[{r.get('dataset','?')}] {r['entity_name']} (shares a name fragment only — verify manually)"

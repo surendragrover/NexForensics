@@ -1,0 +1,44 @@
+{
+  "hypothesis_type": "inside_job",
+  "name": "Inside Job / Employee Assistance",
+  "priority": 2,
+  "triggers": [
+    "duplicate key",
+    "access card",
+    "no forced entry",
+    "insider",
+    "employee",
+    "security bypassed",
+    "alarm disabled"
+  ],
+  "investigation_directions": [
+    {
+      "title": "Review employee access logs",
+      "why": "Inside job requires internal access",
+      "search_targets": ["Access control system", "Attendance records"],
+      "cross_match": ["Timeline", "Shift patterns"],
+      "expected_evidence_gain": 30,
+      "cost": "low",
+      "time_estimate": "1-2 hours",
+      "agencies_to_involve": ["HR", "Security Department"],
+      "expected_documents": ["Access logs", "Employee list"],
+      "failure_conditions": ["No suspicious access patterns"],
+      "confidence_impact_confirmed": 20,
+      "confidence_impact_denied": -15
+    },
+    {
+      "title": "Check employee financial distress",
+      "why": "Financial pressure is common motive",
+      "search_targets": ["Bank records", "Personal debts"],
+      "cross_match": ["Financial anomaly", "Recent changes"],
+      "expected_evidence_gain": 20,
+      "cost": "medium",
+      "time_estimate": "1 day",
+      "agencies_to_involve": ["Financial Intelligence", "Bank"],
+      "expected_documents": ["Financial statements"],
+      "failure_conditions": ["No financial pressure found"],
+      "confidence_impact_confirmed": 15,
+      "confidence_impact_denied": -10
+    }
+  ]
+}

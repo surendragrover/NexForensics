@@ -1,0 +1,58 @@
+{
+  "kb_name": "Inside Job Investigation Knowledge Base",
+  "version": "2.0",
+  "rules": [
+    {
+      "rule_id": "IJ-001",
+      "name": "Employee Access Log Analysis",
+      "conditions": [
+        {"field": "hypothesis", "hypothesis_name": "inside_job", "operator": "gt", "value": 0.6, "logic": "AND"}
+      ],
+      "base_likelihood": 75,
+      "direction": {
+        "title": "Comprehensive Employee Access Log Review",
+        "description": "Pull access logs, duty rosters, attendance records, shift changes, and administrator/override events. Look for employees with access to compromised areas, recent disciplinary actions, financial distress indicators, or abrupt behaviour changes.",
+        "trigger": "Security or access controls were disabled/bypassed in a way that suggests legitimate credentials or internal knowledge of the schedule/layout.",
+        "search_targets": ["Access-control logs", "Guard/duty roster", "Administrator login history", "Emergency override events", "Employees present within the incident window"],
+        "cross_match": ["Access timestamps against the incident timeline", "Override account against employee directory", "Present-on-shift list against known associates of other hypotheses"],
+        "expected_outcome": "Confirms whether the security shutdown required legitimate/internal credentials — directly moves the Inside Job hypothesis up or down.",
+        "cost": "Low",
+        "time_estimate": "4-6 Hours",
+        "expected_gain": 20.0,
+        "confidence_impact": {"if_confirmed": 20, "if_denied": -10},
+        "legal_difficulty": "Low",
+        "resources": ["HR Department", "Access Control System", "Payroll Records", "CCTV Review Team"],
+        "documents": ["Employee Access Logs", "Duty Rosters", "Attendance Records", "Recent Resignation Letters", "Disciplinary Records"],
+        "agencies": ["Internal Security", "HR Department", "Local Police"],
+        "failure_conditions": ["Logs tampered or deleted", "Shared access credentials", "Contractor not in employee database"]
+      },
+      "why_template": "Inside job hypothesis exceeds 60% — employee access patterns and recent personnel changes are the highest-yield investigation vectors for insider threats."
+    },
+    {
+      "rule_id": "IJ-002",
+      "name": "Former Employee Investigation",
+      "conditions": [
+        {"field": "hypothesis", "hypothesis_name": "inside_job", "operator": "gt", "value": 0.5, "logic": "AND"}
+      ],
+      "base_likelihood": 65,
+      "direction": {
+        "title": "Former Employee Background & Contact Trace",
+        "description": "Build a list of employees who resigned, were terminated, or were suspended in the last 2 years — especially anyone with knowledge of layout, schedules, or security procedures — and cross-match against current mobile, financial, and location data.",
+        "trigger": "Inside job hypothesis is active and the method shows familiarity with layout/procedures beyond what a current employee alone would need to demonstrate (i.e. someone who knew it, but isn't there day to day).",
+        "search_targets": ["HR separation records (last 24 months)", "Exit-interview notes", "Current mobile number/SIM registration", "Known current address/employer"],
+        "cross_match": ["Former-employee list against current financial distress indicators", "Former-employee list against current location near the scene", "Former-employee list against other hypotheses' associate names"],
+        "expected_outcome": "Surfaces a short list of ex-staff with both motive/knowledge and current traceability — a fast path to a named suspect.",
+        "cost": "Low",
+        "time_estimate": "2-4 Hours",
+        "expected_gain": 17.0,
+        "confidence_impact": {"if_confirmed": 17, "if_denied": -8},
+        "legal_difficulty": "Low",
+        "resources": ["HR Records", "Exit Interview Files", "Telecom Subscriber Lookup"],
+        "documents": ["Separation Records", "Exit Interviews", "Current Contact Details"],
+        "agencies": ["HR Department", "Local Police"],
+        "failure_conditions": ["No recent separations on record", "Former employee has relocated/untraceable", "Records purged after separation"]
+      },
+      "why_template": "Inside job hypothesis is active — former employees combine the layout/procedure knowledge of an insider with the motive profile of a grievance, and are often easier to trace than current staff."
+    }
+  ]
+}

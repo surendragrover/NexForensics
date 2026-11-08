@@ -265,6 +265,28 @@
         "special": []
       },
       {
+        "crime": "Bank Guarantee / LoU Fraud",
+        "severity": "High",
+        "keywords": [
+          "letter of undertaking",
+          "letters of undertaking",
+          "lous",
+          "lou",
+          "letter of comfort",
+          "bank guarantee fraud",
+          "fraudulent guarantees",
+          "buyer's credit",
+          "without entering them in the core banking",
+          "bypassed the core banking"
+        ],
+        "ipc": [
+          "420",
+          "409",
+          "120B"
+        ],
+        "special": []
+      },
+      {
         "crime": "Bank Fraud",
         "severity": "High",
         "keywords": [
@@ -330,7 +352,10 @@
           "diversion/siphoning",
           "siphoning",
           "siphoned",
-          "diversion of loan funds"
+          "diversion of loan funds",
+          "diverted",
+          "diverted through",
+          "routed through shell"
         ],
         "ipc": [
           "406"
@@ -413,11 +438,15 @@
           "bribery",
           "bribe",
           "kickback",
-          "corruption"
+          "corruption",
+          "bribes",
+          "bribed",
+          "took bribes",
+          "illegal gratification"
         ],
         "ipc": [],
         "special": [
-          "Prevention of Corruption Act 1988"
+          "Prevention of Corruption Act 1988 s.7/s.13"
         ]
       },
       {
@@ -456,6 +485,164 @@
         "special": [
           "Income-tax Act 1961 s.276C"
         ]
+      },
+      {
+        "crime": "Murder",
+        "severity": "Critical",
+        "keywords": [
+          "murder",
+          "murdered",
+          "strangled",
+          "shot dead",
+          "stabbed to death",
+          "beaten to death",
+          "bludgeoned",
+          "poisoned to death",
+          "killed"
+        ],
+        "ipc": [
+          "302"
+        ],
+        "special": []
+      },
+      {
+        "crime": "Attempt to Murder",
+        "severity": "Critical",
+        "keywords": [
+          "attempt to murder",
+          "attempted murder",
+          "tried to kill"
+        ],
+        "ipc": [
+          "307"
+        ],
+        "special": []
+      },
+      {
+        "crime": "Causing Disappearance of Evidence",
+        "severity": "High",
+        "keywords": [
+          "body was burnt",
+          "burnt the body",
+          "body was dumped",
+          "dumped the body",
+          "disposed of the body",
+          "destroyed evidence",
+          "destroyed the evidence",
+          "destroying digital evidence"
+        ],
+        "ipc": [
+          "201"
+        ],
+        "special": []
+      },
+      {
+        "crime": "Kidnapping / Abduction",
+        "severity": "Critical",
+        "keywords": [
+          "kidnapped",
+          "kidnapping",
+          "abducted",
+          "abduction"
+        ],
+        "ipc": [
+          "363"
+        ],
+        "special": []
+      },
+      {
+        "crime": "Rape",
+        "severity": "Critical",
+        "keywords": [
+          "rape",
+          "raped"
+        ],
+        "ipc": [
+          "376"
+        ],
+        "special": []
+      },
+      {
+        "crime": "Dacoity",
+        "severity": "Critical",
+        "keywords": [
+          "dacoity",
+          "dacoits"
+        ],
+        "ipc": [
+          "395"
+        ],
+        "special": []
+      },
+      {
+        "crime": "Robbery",
+        "severity": "High",
+        "keywords": [
+          "robbery",
+          "robbed",
+          "looted"
+        ],
+        "ipc": [
+          "392"
+        ],
+        "special": []
+      },
+      {
+        "crime": "Extortion",
+        "severity": "High",
+        "keywords": [
+          "extortion",
+          "extorted",
+          "ransom"
+        ],
+        "ipc": [
+          "384"
+        ],
+        "special": []
+      },
+      {
+        "crime": "Housebreaking / Burglary",
+        "severity": "High",
+        "keywords": [
+          "burglary",
+          "house-breaking",
+          "housebreaking",
+          "broke into"
+        ],
+        "ipc": [
+          "457",
+          "380"
+        ],
+        "special": []
+      },
+      {
+        "crime": "Theft",
+        "severity": "Medium",
+        "keywords": [
+          "theft",
+          "stole",
+          "stolen"
+        ],
+        "ipc": [
+          "379"
+        ],
+        "special": []
+      },
+      {
+        "crime": "Hurt / Assault",
+        "severity": "High",
+        "keywords": [
+          "assaulted",
+          "grievous hurt",
+          "attacked with",
+          "beat him",
+          "beat her"
+        ],
+        "ipc": [
+          "323",
+          "324"
+        ],
+        "special": []
       }
     ],
     "never_crime_terms_note": "Organisation/brand/person names are filtered: any ORG/BANK/PERSON entity value is never used as a crime keyword."
@@ -473,7 +660,22 @@
         "468": "336(3)",
         "471": "340(2)",
         "403": "314",
-        "477A": "344"
+        "477A": "344",
+        "302": "103",
+        "307": "109",
+        "201": "238",
+        "363": "137(2)",
+        "364": "140(1)",
+        "376": "64",
+        "395": "310(2)",
+        "392": "309(4)",
+        "384": "308(2)",
+        "457": "331(4)",
+        "380": "305",
+        "379": "303(2)",
+        "323": "115(2)",
+        "324": "118(1)",
+        "326": "118(2)"
       },
       "ipc_to_bns_source": "NCRB IPC-BNS correspondence table https://www.ncrb.mha.gov.in/uploads/SankalanPortal/SectionTableBNS.html (verified 2026-11-07)",
       "ipc_titles": {
@@ -485,7 +687,22 @@
         "468": "forgery for cheating",
         "471": "using forged document as genuine",
         "403": "dishonest misappropriation",
-        "477A": "falsification of accounts"
+        "477A": "falsification of accounts",
+        "302": "murder",
+        "307": "attempt to murder",
+        "201": "causing disappearance of evidence of offence",
+        "363": "kidnapping",
+        "364": "kidnapping or abducting in order to murder",
+        "376": "rape",
+        "395": "dacoity",
+        "392": "robbery",
+        "384": "extortion",
+        "457": "lurking house-trespass or house-breaking by night",
+        "380": "theft in dwelling house",
+        "379": "theft",
+        "323": "voluntarily causing hurt",
+        "324": "voluntarily causing hurt by dangerous weapons or means",
+        "326": "voluntarily causing grievous hurt by dangerous weapons or means"
       },
       "label": "AI-suggested, NOT verified: confirm with the FIR/chargesheet and counsel before citing.",
       "actions": {
@@ -493,7 +710,8 @@
         "general": "Coordinate with State Police / Crime Branch and, for cross-state cases, CBI/NIA.",
         "accounting": "Coordinate with SFIO/MCA (company fraud), SEBI (listed company), CBI/State EOW and ED (PMLA) where proceeds were moved; obtain the forensic audit."
       },
-      "jurisdiction_label": "India (detected from {basis})"
+      "jurisdiction_label": "India (detected from {basis})",
+      "ipc_to_bns_source_p42": "NCRB IPC-BNS table, re-fetched 2026-11-08 for 302, 307, 201, 363, 364, 376, 395, 392, 384, 457, 380, 379, 323, 324, 326"
     },
     "default": {
       "label": "AI-suggested, NOT verified: jurisdiction not confidently detected; no statute suggested.",
@@ -617,12 +835,108 @@
         "Photo / ID documents of the subject",
         "Identity resolution only; not evidence of the financial offence"
       ]
+    ],
+    "guarantee": [
+      [
+        "High",
+        "SWIFT messages sent by the branch, reconciled against core banking (CBS) entries",
+        "Finds guarantees/LoUs issued outside the books"
+      ],
+      [
+        "High",
+        "LoU / guarantee register, sanction limits and margin records of the borrower firms",
+        "Shows whether any facility was approved"
+      ],
+      [
+        "High",
+        "Buyer's credit records from the overseas branches that funded the LoUs",
+        "Amounts, dates, roll-overs and where money went"
+      ],
+      [
+        "High",
+        "CBI FIR / chargesheet, ED ECIR and attachment orders",
+        "Primary record of the allegations and evidence"
+      ],
+      [
+        "High",
+        "Access logs, user IDs and passwords used on SWIFT and CBS by branch staff",
+        "Who issued the messages"
+      ],
+      [
+        "Medium",
+        "Bank accounts and assets of the officials (disproportionate assets)",
+        "Corroborates bribery"
+      ],
+      [
+        "Medium",
+        "Import documents, supplier invoices and the shell entities abroad",
+        "Tests the stated trade purpose"
+      ],
+      [
+        "Medium",
+        "RBI inspection reports and internal audit / concurrent audit of the branch",
+        "Why controls failed"
+      ],
+      [
+        "Low",
+        "Photo / ID documents of the subject",
+        "Identity resolution only; not evidence of the offence"
+      ]
+    ],
+    "by_crime": {
+      "Accounting / Financial Statement Fraud": "accounting",
+      "Bank Guarantee / LoU Fraud": "guarantee",
+      "Murder": "homicide",
+      "Attempt to Murder": "homicide"
+    },
+    "homicide": [
+      [
+        "High",
+        "Post-mortem report, or forensic / DNA examination of recovered remains",
+        "Cause of death and identity of the victim"
+      ],
+      [
+        "High",
+        "Call detail records and tower locations of the accused around the date",
+        "Places the accused with the victim"
+      ],
+      [
+        "High",
+        "Vehicle used, its movement record and forensic examination",
+        "Scene of the offence and transport of the body"
+      ],
+      [
+        "High",
+        "Recovery panchnama of the body / remains and the site",
+        "Links the accused to disposal of the body"
+      ],
+      [
+        "High",
+        "Statements of witnesses and any confession or approver statement before a magistrate",
+        "Direct account of the offence"
+      ],
+      [
+        "Medium",
+        "Last-seen evidence, messages and emails of the victim",
+        "Timeline of the victim's last days"
+      ],
+      [
+        "Medium",
+        "Motive records: property, money or family disputes",
+        "Why the offence was committed"
+      ],
+      [
+        "Low",
+        "Photo / ID of the accused",
+        "Identity resolution"
+      ]
     ]
   },
   "threat": {
     "not_assessed": "NOT ASSESSED",
     "financial_basis_crimes": [
       "Accounting / Financial Statement Fraud",
+      "Bank Guarantee / LoU Fraud",
       "Bank Fraud",
       "Cheating",
       "Criminal Breach of Trust",
@@ -706,7 +1020,12 @@
       "terror",
       "consolidated list"
     ],
-    "strip_suffix": "(regulatory/sanction list; check the source)"
+    "strip_suffix": "(regulatory/sanction list; check the source)",
+    "interpol_markers": [
+      "interpol",
+      "red notice",
+      "red corner notice"
+    ]
   },
   "entity_supplement": {
     "agencies": {
@@ -825,5 +1144,276 @@
     "floor_if_financial_crime": 40,
     "cap": 95,
     "label": "rule-based score from narrative allegations and name-matches; no transactions analysed"
+  },
+  "crime_risk_rules": {
+    "note": "p41 (2026-11-08): case risk from the seriousness of each crime alleged, used when no validated risk model applies. Score = highest crime base + 5 per further distinct crime (max +15) + modifiers; cap 95. Markers match crime names case-insensitively. Case priority is a workflow field and is not used.",
+    "base": [
+      [
+        "attempt to murder",
+        85
+      ],
+      [
+        "dacoity",
+        75
+      ],
+      [
+        "disappearance of evidence",
+        45
+      ],
+      [
+        "housebreaking",
+        45
+      ],
+      [
+        "terror",
+        95
+      ],
+      [
+        "murder",
+        90
+      ],
+      [
+        "homicide",
+        90
+      ],
+      [
+        "rape",
+        90
+      ],
+      [
+        "sexual assault",
+        88
+      ],
+      [
+        "human trafficking",
+        88
+      ],
+      [
+        "kidnap",
+        85
+      ],
+      [
+        "hostage",
+        85
+      ],
+      [
+        "deadly weapon",
+        80
+      ],
+      [
+        "ransomware",
+        75
+      ],
+      [
+        "robbery",
+        70
+      ],
+      [
+        "fugitive from justice",
+        70
+      ],
+      [
+        "interpol red notice",
+        70
+      ],
+      [
+        "arson",
+        70
+      ],
+      [
+        "extortion",
+        65
+      ],
+      [
+        "weapons",
+        65
+      ],
+      [
+        "fugitive economic offence",
+        65
+      ],
+      [
+        "accounting / financial statement fraud",
+        60
+      ],
+      [
+        "bank guarantee / lou fraud",
+        60
+      ],
+      [
+        "bank fraud",
+        60
+      ],
+      [
+        "bank loan fraud",
+        60
+      ],
+      [
+        "securities fraud",
+        60
+      ],
+      [
+        "money laundering",
+        60
+      ],
+      [
+        "assault",
+        60
+      ],
+      [
+        "embezzlement",
+        55
+      ],
+      [
+        "diversion",
+        55
+      ],
+      [
+        "data breach",
+        55
+      ],
+      [
+        "computer hacking",
+        55
+      ],
+      [
+        "malware",
+        55
+      ],
+      [
+        "cryptocurrency theft",
+        55
+      ],
+      [
+        "dark web",
+        55
+      ],
+      [
+        "shell company",
+        50
+      ],
+      [
+        "bribery",
+        50
+      ],
+      [
+        "counterfeit",
+        50
+      ],
+      [
+        "passport fraud",
+        50
+      ],
+      [
+        "identity",
+        50
+      ],
+      [
+        "wire fraud",
+        50
+      ],
+      [
+        "cheating",
+        45
+      ],
+      [
+        "breach of trust",
+        45
+      ],
+      [
+        "tax evasion",
+        45
+      ],
+      [
+        "burglary",
+        45
+      ],
+      [
+        "forgery",
+        40
+      ],
+      [
+        "phishing",
+        40
+      ],
+      [
+        "ddos",
+        40
+      ],
+      [
+        "criminal threat",
+        40
+      ],
+      [
+        "threat language",
+        40
+      ],
+      [
+        "wilful default",
+        35
+      ],
+      [
+        "willful default",
+        35
+      ],
+      [
+        "theft",
+        35
+      ],
+      [
+        "criminal conspiracy",
+        30
+      ],
+      [
+        "impersonation",
+        30
+      ],
+      [
+        "foreign exchange",
+        25
+      ]
+    ],
+    "extra_crime_points": 5,
+    "extra_crime_cap": 15,
+    "modifiers": {
+      "weapon_entities": 10,
+      "absconding": 10,
+      "amount_1000_crore": 10,
+      "amount_100_crore": 5,
+      "organised_keywords": [
+        "gang",
+        "syndicate",
+        "organised",
+        "organized",
+        "network of",
+        "shell companies",
+        "cartel"
+      ],
+      "organised": 5,
+      "fugitive_or_interpol_name_match": 5,
+      "multiple_victims_keywords": [
+        "victims",
+        "depositors",
+        "investors",
+        "customers"
+      ],
+      "multiple_victims": 5
+    },
+    "bands": [
+      [
+        70,
+        "High"
+      ],
+      [
+        40,
+        "Medium"
+      ],
+      [
+        0,
+        "Low"
+      ]
+    ],
+    "cap": 95,
+    "label": "{band} ({score:.0f}/100, rule-based from crime severity: {basis}; not a model, not a finding)"
   }
 }

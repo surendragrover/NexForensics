@@ -572,9 +572,32 @@ def run_investigator_engine(case_data: Dict[str, Any]) -> Dict[str, Any]:
     try:
         from analysis.report_rules import classify_crimes as _p38_cc, is_accounting_case as _p38_iac
         _p38_acct = _p38_iac(_p38_cc(mo_description or ""))
+        _p41_lou = any(c["crime"] == "Bank Guarantee / LoU Fraud" for c in _p38_cc(mo_description or ""))
     except Exception:
         _p38_acct = False
-    if mo_description and _p38_acct:
+        _p41_lou = False
+    if mo_description and _p41_lou:
+        mo_l = mo_description.lower()
+        _sig = [k for k in ("swift", "core banking", "without collateral", "cash margin", "bribe", "officials",
+                            "deputy manager", "rolled over", "buyer's credit") if _kw_in(k, mo_l)]
+        _h1 = 70 if len(_sig) >= 3 else (50 if _sig else 35)
+        reasoning_matrix.append({
+            "hypothesis": "Insider-assisted issue of unrecorded LoUs / guarantees by bank officials",
+            "name": "Insider-assisted issue of unrecorded LoUs / guarantees by bank officials",
+            "confidence": _h1, "confidence_label": "HIGH" if _h1 >= 70 else "MEDIUM",
+            "supporting": len(_sig), "contradicting": 0,
+            "source": "Bank-instrument Fraud Pattern Analysis" + (f" — matched: {', '.join(_sig[:4])}" if _sig else ""),
+            "status": "ACTIVE"})
+        _dv = [k for k in ("diverted", "shell", "rolled over", "abroad", "overseas") if _kw_in(k, mo_l)]
+        _h2 = 45 if len(_dv) >= 2 else (30 if _dv else 15)
+        reasoning_matrix.append({
+            "hypothesis": "Credit rolled over with new LoUs and diverted through shell entities abroad",
+            "name": "Credit rolled over with new LoUs and diverted through shell entities abroad",
+            "confidence": _h2, "confidence_label": "MEDIUM" if _h2 >= 40 else "LOW",
+            "supporting": len(_dv), "contradicting": 0,
+            "source": "Fund-flow Pattern Analysis" + (f" — matched: {', '.join(_dv[:4])}" if _dv else " — no signal"),
+            "status": "PENDING"})
+    elif mo_description and _p38_acct:
         # p38: accounting / financial-statement fraud is not a loan-default case
         mo_l = mo_description.lower()
         _sig = [k for k in ("inflated", "fictitious", "falsified", "fake invoices", "forged bank statements",
@@ -728,7 +751,14 @@ def run_investigator_engine(case_data: Dict[str, Any]) -> Dict[str, Any]:
                             f"support a confident hypothesis ranking").strip(" —")
 
     # ── Investigation Paths ──────────────────────────────────────────────
-    if _p38_acct:
+    if _p41_lou:
+        _extra_paths = [
+            {"name": n, "confidence": "MEDIUM", "evidence_count": 0, "contradictions": 0, "status": "PENDING"}
+            for n in ("SWIFT messages vs core banking (CBS) reconciliation",
+                      "LoU register, limits and margins vs approvals",
+                      "Overseas buyer's credit: amounts, roll-overs, end use",
+                      "Officials' assets and bribe trail")]
+    elif _p38_acct:
         _extra_paths = [
             {"name": n, "confidence": "MEDIUM", "evidence_count": 0, "contradictions": 0, "status": "PENDING"}
             for n in ("Books of account vs independent bank / FD confirmations",

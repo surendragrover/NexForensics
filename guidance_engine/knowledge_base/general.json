@@ -1,0 +1,36 @@
+{
+  "hypothesis_type": "general",
+  "name": "General Investigation",
+  "priority": 4,
+  "triggers": [],
+  "investigation_directions": [
+    {
+      "title": "Collect witness statements",
+      "why": "Witnesses often provide key leads",
+      "search_targets": ["Witness interviews", "CCTV"],
+      "cross_match": ["Timeline", "Location"],
+      "expected_evidence_gain": 15,
+      "cost": "low",
+      "time_estimate": "2-4 hours",
+      "agencies_to_involve": ["Local Police"],
+      "expected_documents": ["Witness statements"],
+      "failure_conditions": ["No witnesses identified"],
+      "confidence_impact_confirmed": 10,
+      "confidence_impact_denied": -5
+    },
+    {
+      "title": "Review CCTV footage",
+      "why": "Visual evidence is often crucial",
+      "search_targets": ["CCTV archives", "Traffic cameras"],
+      "cross_match": ["Timeline", "Vehicle description"],
+      "expected_evidence_gain": 20,
+      "cost": "medium",
+      "time_estimate": "4-6 hours",
+      "agencies_to_involve": ["Traffic Police", "CCTV Department"],
+      "expected_documents": ["Video footage", "Screenshots"],
+      "failure_conditions": ["No CCTV coverage"],
+      "confidence_impact_confirmed": 15,
+      "confidence_impact_denied": -8
+    }
+  ]
+}

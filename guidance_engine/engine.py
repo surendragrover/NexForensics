@@ -80,7 +80,7 @@ class InvestigationGuidanceEngine:
         scored_kbs.sort(key=lambda x: x[0], reverse=True)
 
         active_kbs = [kb for _, kb in scored_kbs]
-        _fin_types = {"financial_fraud", "accounting_fraud"}
+        _fin_types = {"financial_fraud", "accounting_fraud", "financial_fraud_bank_instrument"}
         if not active_kbs and general_kb:
             active_kbs = [general_kb]
         elif general_kb and not any(k.get("hypothesis_type") in _fin_types for k in active_kbs):

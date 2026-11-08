@@ -1,0 +1,55 @@
+{
+  "hypothesis_type": "financial_fraud",
+  "name": "Financial Fraud / Money Trail",
+  "priority": 3,
+  "triggers": [
+    "financial",
+    "bank",
+    "account",
+    "wallet",
+    "crypto",
+    "transfer",
+    "payment",
+    "shell company",
+    "offshore",
+    "money",
+    "jewelry",
+    "currency",
+    "\u20b912 Crores",
+    "foreign currency",
+    "Bitcoin",
+    "asset laundering",
+    "high-value"
+  ],
+  "investigation_directions": [
+    {
+      "title": "Trace financial transactions",
+      "why": "Financial crimes leave a money trail",
+      "search_targets": [
+        "Bank records",
+        "Crypto exchanges"
+      ],
+      "cross_match": [
+        "Transaction amounts",
+        "Timing"
+      ],
+      "expected_evidence_gain": 35,
+      "cost": "high",
+      "time_estimate": "2-3 days",
+      "agencies_to_involve": [
+        "ED",
+        "FIU",
+        "Bank"
+      ],
+      "expected_documents": [
+        "Bank statements",
+        "Transaction logs"
+      ],
+      "failure_conditions": [
+        "No financial records available"
+      ],
+      "confidence_impact_confirmed": 25,
+      "confidence_impact_denied": -15
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "kb_name": "CCTV Sabotage / Security Staff Collusion Investigation Knowledge Base",
+  "version": "1.0",
+  "rules": [
+    {
+      "rule_id": "SC-001",
+      "name": "DVR / CCTV Forensic Timeline",
+      "conditions": [
+        {"field": "hypothesis", "hypothesis_name": "security_collusion", "operator": "gt", "value": 0.5, "logic": "AND"}
+      ],
+      "base_likelihood": 72,
+      "direction": {
+        "title": "DVR/CCTV Sabotage Forensic Timeline",
+        "description": "Pull DVR system logs, camera outage sequence, administrator login activity, deleted-footage recovery, power-event logs, and network logs around the outage window to determine whether the sabotage required physical access, remote/admin access, or both.",
+        "trigger": "CCTV/DVR outage or footage gap coincides suspiciously with the incident window.",
+        "search_targets": ["DVR system/admin logs", "Camera outage sequence", "Power-event logs", "Network switch logs", "Deleted-footage recovery"],
+        "cross_match": ["Admin login account against employee/security-staff roster", "Outage timestamp against duty roster for that shift"],
+        "expected_outcome": "Determines whether the outage was a remote hack, a scheduled/maintenance coincidence, or required someone physically present with admin credentials — directly separates 'CCTV Sabotage' from 'Security Staff Collusion'.",
+        "cost": "Medium",
+        "time_estimate": "3-5 Hours",
+        "expected_gain": 21.0,
+        "confidence_impact": {"if_confirmed": 21, "if_denied": -10},
+        "legal_difficulty": "Low",
+        "resources": ["DVR Vendor / IT Support", "Digital Forensics Team"],
+        "documents": ["DVR System Logs", "Admin Login History", "Power/Network Event Logs"],
+        "agencies": ["Cyber Crime Unit", "Internal Security"],
+        "failure_conditions": ["DVR logs overwritten", "Genuine power/maintenance outage coincidence", "No admin log retained"]
+      },
+      "why_template": "A CCTV outage precisely timed to the incident is either a technical fault or a deliberate act — the DVR's own logs almost always tell you which."
+    },
+    {
+      "rule_id": "SC-002",
+      "name": "Security Staff Duty & Communication Review",
+      "conditions": [
+        {"field": "hypothesis", "hypothesis_name": "security_collusion", "operator": "gt", "value": 0.55, "logic": "AND"}
+      ],
+      "base_likelihood": 68,
+      "direction": {
+        "title": "Security Staff Duty History & Communication Review",
+        "description": "Review guard duty history, patrol logs, radio/phone communication during the shift, unusual absences, and any deviation from the standard patrol route around the incident window.",
+        "trigger": "Security collusion hypothesis is active — someone in a security role may have facilitated or ignored the incident.",
+        "search_targets": ["Guard duty roster and patrol logs", "Shift communication (radio/phone) records", "Patrol-route deviation reports"],
+        "cross_match": ["On-duty guard identity against financial-distress or grievance indicators", "Patrol deviation timing against the incident timeline"],
+        "expected_outcome": "Identifies whether the guard on duty deviated from routine in a way consistent with facilitation, or was genuinely absent/distracted.",
+        "cost": "Low",
+        "time_estimate": "3-6 Hours",
+        "expected_gain": 16.0,
+        "confidence_impact": {"if_confirmed": 16, "if_denied": -7},
+        "legal_difficulty": "Low",
+        "resources": ["Security Agency HR", "Patrol Log System"],
+        "documents": ["Duty Roster", "Patrol Logs", "Shift Communication Records"],
+        "agencies": ["Internal Security", "Local Police"],
+        "failure_conditions": ["Patrol logs not maintained", "Guard genuinely unavailable due to medical/other reason", "Third-party security contractor records inaccessible"]
+      },
+      "why_template": "If a security staff member facilitated the incident, their own duty and communication records during the shift are the most direct way to confirm or rule it out."
+    }
+  ]
+}
