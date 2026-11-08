@@ -573,10 +573,29 @@ def run_investigator_engine(case_data: Dict[str, Any]) -> Dict[str, Any]:
         from analysis.report_rules import classify_crimes as _p38_cc, is_accounting_case as _p38_iac
         _p38_acct = _p38_iac(_p38_cc(mo_description or ""))
         _p41_lou = any(c["crime"] == "Bank Guarantee / LoU Fraud" for c in _p38_cc(mo_description or ""))
+        _p44_hom = any(c["crime"] in ("Murder", "Attempt to Murder") for c in _p38_cc(mo_description or ""))
     except Exception:
         _p38_acct = False
         _p41_lou = False
-    if mo_description and _p41_lou:
+        _p44_hom = False
+    if mo_description and _p44_hom:
+        mo_l = mo_description.lower()
+        def _p44_h(name, keys, hi, mid, lo, status):
+            sig = [k for k in keys if _kw_in(k, mo_l)]
+            c = hi if len(sig) >= 2 else (mid if sig else lo)
+            reasoning_matrix.append({"hypothesis": name, "name": name, "confidence": c,
+                "confidence_label": "HIGH" if c >= 70 else ("MEDIUM" if c >= 40 else "LOW"),
+                "supporting": len(sig), "contradicting": 0,
+                "source": "Homicide Pattern Analysis" + (f" — matched: {', '.join(sig[:4])}" if sig else " — no signal"),
+                "status": status})
+        _p44_h("Killing by persons known to the victim (family / associates)",
+               ("mother", "father", "husband", "wife", "brother", "sister", "son", "daughter", "former husband",
+                "relative", "driver", "friend", "partner", "lover"), 65, 45, 20, "ACTIVE")
+        _p44_h("Planned killing followed by disposal of the body",
+               ("strangled", "body was burnt", "burnt", "dumped", "disposed", "forest", "car", "planned", "poison"), 60, 40, 15, "ACTIVE")
+        _p44_h("Motive: property, money or relationship dispute",
+               ("property", "money", "inheritance", "affair", "relationship", "dispute", "insurance", "will"), 50, 35, 15, "PENDING")
+    elif mo_description and _p41_lou:
         mo_l = mo_description.lower()
         _sig = [k for k in ("swift", "core banking", "without collateral", "cash margin", "bribe", "officials",
                             "deputy manager", "rolled over", "buyer's credit") if _kw_in(k, mo_l)]
@@ -751,7 +770,14 @@ def run_investigator_engine(case_data: Dict[str, Any]) -> Dict[str, Any]:
                             f"support a confident hypothesis ranking").strip(" —")
 
     # ── Investigation Paths ──────────────────────────────────────────────
-    if _p41_lou:
+    if _p44_hom:
+        _extra_paths = [
+            {"name": n, "confidence": "MEDIUM", "evidence_count": 0, "contradictions": 0, "status": "PENDING"}
+            for n in ("Post-mortem / DNA identification of the remains",
+                      "Call records and locations of the accused on the date",
+                      "Vehicle and body-disposal site forensics",
+                      "Motive: property, money and relationships")]
+    elif _p41_lou:
         _extra_paths = [
             {"name": n, "confidence": "MEDIUM", "evidence_count": 0, "contradictions": 0, "status": "PENDING"}
             for n in ("SWIFT messages vs core banking (CBS) reconciliation",

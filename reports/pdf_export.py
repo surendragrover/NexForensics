@@ -1838,6 +1838,24 @@ def export_report_pdf(report_data):
         else:
             story.append(P("None — all core evidence types have been collected.", evidence_style))
 
+        # ── p44: INVESTIGATION ROADMAP (ranked, de-duplicated) ──────────────
+        _road = d.get("roadmap") or []
+        if _road:
+            story.append(Spacer(1, 14))
+            story.append(Paragraph(f"INVESTIGATION ROADMAP ({len(_road)} ranked steps)", h2))
+            _rr = [[P("#", th), P("Priority", th), P("Step", th), P("Why", th)]]
+            for _i, _r in enumerate(_road, 1):
+                _rr.append([P(str(_i)), severity_cell(_r.get("priority", "Medium")), P(_r.get("step", "")), P(_r.get("why", ""), evidence_style)])
+            _rt = Table(_rr, colWidths=[22, 62, 200, 218])
+            _rt.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), DARK), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTSIZE", (0, 0), (-1, -1), 8.5), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LGRAY]),
+                ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("GRID", (0, 0), (-1, -1), 0.4, BORDER)]))
+            story.append(_rt)
+            story.append(P("Leads for the investigator, not findings. Duplicates across sections are merged here.", evidence_style))
+
         # ── INVESTIGATION TIMELINE ───────────────────────────────────────────
         timeline_pdf = d.get("timeline", [])
         story.append(Spacer(1, 14))
